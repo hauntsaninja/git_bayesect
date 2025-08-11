@@ -273,21 +273,17 @@ class State:
         )
 
 
-def resolve_commit(commit_indices: dict[bytes, int], commit: str | bytes) -> bytes:
+def parse_commit(repo_path: Path, commit: str | bytes | None) -> bytes:
     if isinstance(commit, bytes):
         assert len(commit) == 40
         return commit
 
-    candidates = [c for c in commit_indices if c.startswith(commit.encode())]
-    if len(candidates) > 1:
-        raise BayesectError(
-            f"Commit {commit} is ambiguous, {len(candidates)} potential matches found"
-        )
-    if not candidates:
-        range_min = min(commit_indices, key=lambda c: commit_indices[c]).decode()[:8]
-        range_max = max(commit_indices, key=lambda c: commit_indices[c]).decode()[:8]
-        raise BayesectError(f"No commits found for {commit} in range {range_min}...{range_max}")
-    return candidates[0]
+    if commit is None:
+        commit = "HEAD"
+
+    commit = subprocess.check_output(["git", "rev-parse", commit], cwd=repo_path).strip()
+    assert len(commit) == 40
+    return commit
 
 
 def get_commit_indices(repo_path: Path, head: str | bytes) -> dict[bytes, int]:
@@ -412,13 +408,9 @@ def select_and_checkout(repo_path: Path, state: State, bisector: Bisector) -> No
 
 def cli_start(old: str, new: str | bytes | None) -> None:
     repo_path = Path.cwd()
-    if new is None:
-        new = get_current_commit(repo_path)
-
-    commit_indices = get_commit_indices(repo_path, new)
-
-    old_sha = resolve_commit(commit_indices, old)
-    new_sha = resolve_commit(commit_indices, new)
+    new_sha = parse_commit(repo_path, new)
+    old_sha = parse_commit(repo_path, old)
+    commit_indices = get_commit_indices(repo_path, new_sha)
 
     state = State(
         old_sha=old_sha,
@@ -441,11 +433,10 @@ def cli_reset() -> None:
 
 def cli_fail(commit: str | bytes | None) -> None:
     repo_path = Path.cwd()
-    if commit is None:
-        commit = get_current_commit(repo_path)
+    commit = parse_commit(repo_path, commit)
 
     state = State.from_git_state(repo_path)
-    state.results.append((resolve_commit(state.commit_indices, commit), Result.FAIL))
+    state.results.append((commit, Result.FAIL))
     state.dump(repo_path)
 
     bisector = get_bisector(state)
@@ -455,11 +446,10 @@ def cli_fail(commit: str | bytes | None) -> None:
 
 def cli_pass(commit: str | bytes | None) -> None:
     repo_path = Path.cwd()
-    if commit is None:
-        commit = get_current_commit(repo_path)
+    commit = parse_commit(repo_path, commit)
 
     state = State.from_git_state(repo_path)
-    state.results.append((resolve_commit(state.commit_indices, commit), Result.PASS))
+    state.results.append((commit, Result.PASS))
     state.dump(repo_path)
 
     bisector = get_bisector(state)
