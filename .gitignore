@@ -14,3 +14,5 @@ dist/
 
 .tox/
 .mypy_cache/
+
+fake_repo
