@@ -22,12 +22,12 @@ else:
 """
 
 
-def write_file(path: Path, content: str):
+def write_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)

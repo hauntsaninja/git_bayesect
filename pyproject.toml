@@ -33,3 +33,7 @@ name = "git_bayesect"
 [build-system]
 requires = ["flit_core>=3.4"]
 build-backend = "flit_core.buildapi"
+
+[tool.mypy]
+strict = true
+allow_untyped_calls = true
