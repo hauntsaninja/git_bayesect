@@ -177,6 +177,14 @@ class Bisector:
         # fmt: on
 
     @property
+    def empirical_counts(self) -> tuple[tuple[ndarray, ndarray], tuple[ndarray, ndarray]]:
+        total_left = self.obs_total
+        total_right = self.obs_total[-1] - total_left
+        yes_left = self.obs_yes
+        yes_right = yes_left[-1] - yes_left
+        return (yes_left, total_left), (yes_right, total_right)
+
+    @property
     def num_total_observations(self) -> int:
         return int(self.obs_total[-1])
 
@@ -420,6 +428,7 @@ def cli_start(old: str, new: str | bytes | None) -> None:
         commit_indices=commit_indices,
     )
     state.dump(repo_path)
+
     bisector = get_bisector(state)
     print_status(state, bisector)
     select_and_checkout(repo_path, state, bisector)
@@ -438,6 +447,7 @@ def cli_fail(commit: str | bytes | None) -> None:
     state = State.from_git_state(repo_path)
     state.results.append((resolve_commit(state.commit_indices, commit), Result.FAIL))
     state.dump(repo_path)
+
     bisector = get_bisector(state)
     print_status(state, bisector)
     select_and_checkout(repo_path, state, bisector)
@@ -451,9 +461,61 @@ def cli_pass(commit: str | bytes | None) -> None:
     state = State.from_git_state(repo_path)
     state.results.append((resolve_commit(state.commit_indices, commit), Result.PASS))
     state.dump(repo_path)
+
     bisector = get_bisector(state)
     print_status(state, bisector)
     select_and_checkout(repo_path, state, bisector)
+
+
+def cli_log() -> None:
+    repo_path = Path.cwd()
+    state = State.from_git_state(repo_path)
+
+    bisector = get_bisector(state)
+    new_index = state.commit_indices[state.new_sha]
+
+    dist = bisector.distribution
+    dist_p_obs_new, dist_p_obs_old = bisector.empirical_p_obs
+    (yes_new, total_new), (yes_old, total_old) = bisector.empirical_counts
+
+    rows = []
+    for commit, i in sorted(state.commit_indices.items(), key=lambda c: c[1], reverse=True):
+        relative_index = new_index - i
+        if relative_index == 0:
+            observations = f"{yes_new[relative_index]}/{total_new[relative_index]}"
+        else:
+            observations = (
+                f"{yes_new[relative_index] - yes_new[relative_index - 1]}/"
+                f"{total_new[relative_index] - total_new[relative_index - 1]}"
+            )
+        rows.append(
+            (
+                commit.decode()[:8],
+                f"{dist[relative_index]:.1%}",
+                observations,
+                f"{dist_p_obs_new[relative_index]:.1%}",
+                f"({yes_new[relative_index]}/{total_new[relative_index]})",
+                f"{dist_p_obs_old[relative_index]:.1%}",
+                f"({yes_old[relative_index]}/{total_old[relative_index]})",
+            )
+        )
+        if commit == state.old_sha:
+            break
+
+    widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+
+    for commit_str, likelihood, observations, p_obs_new, c_obs_new, p_obs_old, c_obs_old in rows:
+        print(
+            f"{commit_str:<{widths[0]}} "
+            f"likelihood {likelihood:<{widths[1]}}, "
+            f"observed {observations:<{widths[2]}} failures, "
+            f"subsequent failure rate {p_obs_new:<{widths[3]}} "
+            f"{c_obs_new:<{widths[4]}}, "
+            f"prior failure rate {p_obs_old:<{widths[5]}} "
+            f"{c_obs_old:<{widths[6]}}"
+        )
+
+    print_status(state, bisector)
 
 
 def parse_options(argv: list[str]) -> argparse.Namespace:
@@ -476,6 +538,9 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
 
     subparser = subparsers.add_parser("reset")
     subparser.set_defaults(command=cli_reset)
+
+    subparser = subparsers.add_parser("log")
+    subparser.set_defaults(command=cli_log)
 
     return parser.parse_args(argv)
 
