@@ -20,6 +20,7 @@ dependencies = [
 ]
 
 [project.scripts]
+git-bayesect = "git_bayesect:main"
 git_bayesect = "git_bayesect:main"
 
 [project.urls]

@@ -197,3 +197,294 @@ class Bisector:
         right = min(right, len(cumsum) - 1)  # type: ignore[call-overload]
 
         return int(left), int(right)
+
+
+class BayesectError(Exception):
+    pass
+
+
+class Result(enum.Enum):
+    FAIL = "fail"
+    PASS = "pass"
+    SKIP = "skip"
+
+
+STATE_FILENAME = "BAYESECT_STATE"
+
+
+class State:
+    def __init__(
+        self,
+        old_sha: bytes,
+        new_sha: bytes,
+        priors: dict[bytes, float],
+        results: list[tuple[bytes, Result]],
+        commit_indices: dict[bytes, int],
+    ) -> None:
+        self.old_sha = old_sha
+        self.new_sha = new_sha
+        self.priors = priors
+        self.results = results
+        self.commit_indices = commit_indices
+
+    def dump(self, repo_path: Path) -> None:
+        state_dict = {
+            "old_sha": self.old_sha.decode(),
+            "new_sha": self.new_sha.decode(),
+            "priors": {k.decode(): v for k, v in self.priors.items()},
+            "results": [(k.decode(), v.value) for k, v in self.results],
+        }
+        with open(repo_path / ".git" / STATE_FILENAME, "w") as f:
+            json.dump(state_dict, f)
+
+    @classmethod
+    def from_git_state(cls, repo_path: Path) -> State:
+        try:
+            with open(repo_path / ".git" / STATE_FILENAME) as f:
+                state_dict = json.load(f)
+        except FileNotFoundError:
+            raise BayesectError("No state file found, run `git bayesect start` first")
+
+        assert set(state_dict) == {"old_sha", "new_sha", "priors", "results"}
+
+        old_sha: bytes = state_dict["old_sha"].encode()
+        new_sha: bytes = state_dict["new_sha"].encode()
+        priors: dict[bytes, float] = {k.encode(): float(v) for k, v in state_dict["priors"].items()}
+        results: list[tuple[bytes, Result]] = [
+            (k.encode(), Result(v)) for k, v in state_dict["results"]
+        ]
+
+        commit_indices = get_commit_indices(repo_path, new_sha.decode())
+
+        return cls(
+            old_sha=old_sha,
+            new_sha=new_sha,
+            priors=priors,
+            results=results,
+            commit_indices=commit_indices,
+        )
+
+
+def resolve_commit(commit_indices: dict[bytes, int], commit: str | bytes) -> bytes:
+    if isinstance(commit, bytes):
+        assert len(commit) == 40
+        return commit
+
+    candidates = [c for c in commit_indices if c.startswith(commit.encode())]
+    if len(candidates) > 1:
+        raise BayesectError(
+            f"Commit {commit} is ambiguous, {len(candidates)} potential matches found"
+        )
+    if not candidates:
+        range_min = min(commit_indices, key=lambda c: commit_indices[c]).decode()[:8]
+        range_max = max(commit_indices, key=lambda c: commit_indices[c]).decode()[:8]
+        raise BayesectError(f"No commits found for {commit} in range {range_min}...{range_max}")
+    return candidates[0]
+
+
+def get_commit_indices(repo_path: Path, head: str | bytes) -> dict[bytes, int]:
+    if isinstance(head, bytes):
+        head = head.decode()
+
+    # Oldest commit has index 0
+    # TODO: think about non-linear history
+    # --first-parent: When finding commits to include, follow only the first parent commit
+    # upon seeing a merge commit.
+    output = subprocess.check_output(
+        ["git", "rev-list", "--reverse", "--first-parent", head], cwd=repo_path
+    )
+    return {line.strip(): i for i, line in enumerate(output.splitlines())}
+
+
+def get_current_commit(repo_path: Path) -> bytes:
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_path).strip()
+
+
+def get_bisector(state: State) -> Bisector:
+    old_index = state.commit_indices[state.old_sha]
+    new_index = state.commit_indices[state.new_sha]
+
+    prior = np.ones(new_index - old_index + 1)
+    for commit_sha, weight in state.priors.items():
+        commit_index = state.commit_indices.get(commit_sha, -1)
+        if commit_index < old_index:
+            continue
+
+        relative_index = new_index - commit_index
+        assert 0 <= relative_index <= new_index - old_index
+        prior[relative_index] = weight
+
+    bisector = Bisector(prior)
+
+    for commit_sha, result in state.results:
+        if result not in {Result.FAIL, Result.PASS}:
+            # TODO: handle SKIP maybe by adjusting the prior
+            continue
+
+        commit_index = state.commit_indices.get(commit_sha, -1)
+        if commit_index < old_index:
+            continue
+
+        # Our bisector is set up so that:
+        # - index 0 is newest commit
+        # - we're recording failures
+        relative_index = new_index - commit_index
+        assert 0 <= relative_index <= new_index - old_index
+        bisector.record(relative_index, result == Result.FAIL)
+
+    return bisector
+
+
+def print_status(state: State, bisector: Bisector) -> None:
+    new_index = state.commit_indices[state.new_sha]
+    old_index = state.commit_indices[state.old_sha]
+
+    dist = bisector.distribution
+    dist_p_obs_new, dist_p_obs_old = bisector.empirical_p_obs
+
+    p_obs_new = (dist_p_obs_new * dist).sum()
+    p_obs_old = (dist_p_obs_old * dist).sum()
+
+    # TODO: maybe tie break argmax with most central?
+    most_likely_index = int(np.argmax(dist))
+    most_likely_prob = dist[most_likely_index]
+    most_likely_p_obs_new = dist_p_obs_new[most_likely_index]
+    most_likely_p_obs_old = dist_p_obs_old[most_likely_index]
+
+    p90_left, p90_right = bisector.central_range(0.9)
+    p90_range = p90_right - p90_left + 1
+
+    indices_commits = {i: c for c, i in state.commit_indices.items()}
+    most_likely_commit = indices_commits[new_index - most_likely_index].decode()[:8]
+    p90_left_commit = indices_commits[new_index - p90_left].decode()[:8]
+    p90_right_commit = indices_commits[new_index - p90_right].decode()[:8]
+
+    print("=" * 80)
+
+    if most_likely_prob >= 0.95:
+        most_likely_commit = indices_commits[new_index - most_likely_index].decode()[:8]
+        msg = (
+            f"Bisection converged to {most_likely_commit} ({most_likely_prob:.1%}) "
+            f"after {bisector.num_total_observations} observations\n"
+            f"Subsequent failure rate is {most_likely_p_obs_new:.1%}, "
+            f"prior failure rate is {most_likely_p_obs_old:.1%}"
+        )
+        msg = msg.rstrip()
+        print(msg)
+    else:
+        msg = (
+            f"Bisection narrowed to `{p90_right_commit}^...{p90_left_commit}` "
+            f"({p90_range} commits) with 90% confidence "
+            f"after {bisector.num_total_observations} observations\n"
+        )
+        msg += f"New failure rate estimate: {p_obs_new:.1%}, old failure rate estimate: {p_obs_old:.1%}\n\n"
+        if most_likely_prob >= max(0.1, 2 / (new_index - old_index + 1)):
+            msg += f"Most likely commit: {most_likely_commit} ({most_likely_prob:.1%})\n"
+            msg += f"Subsequent failure rate is {most_likely_p_obs_new:.1%}, "
+            msg += f"prior failure rate is {most_likely_p_obs_old:.1%}\n"
+
+        msg = msg.rstrip()
+        print(msg)
+
+    print("=" * 80)
+
+
+def select_and_checkout(repo_path: Path, state: State, bisector: Bisector) -> None:
+    new_index = state.commit_indices[state.new_sha]
+
+    relative_index = bisector.select()
+    commit_index = new_index - relative_index
+    commit_sha = {c: i for i, c in state.commit_indices.items()}[commit_index]
+
+    print(f"Checking out next commit to test: {commit_sha.decode()[:8]}")
+    subprocess.run(
+        ["git", "checkout", commit_sha.decode()], cwd=repo_path, check=True, capture_output=True
+    )
+
+
+def cli_start(old: str, new: str | bytes | None) -> None:
+    repo_path = Path.cwd()
+    if new is None:
+        new = get_current_commit(repo_path)
+
+    commit_indices = get_commit_indices(repo_path, new)
+
+    old_sha = resolve_commit(commit_indices, old)
+    new_sha = resolve_commit(commit_indices, new)
+
+    state = State(
+        old_sha=old_sha,
+        new_sha=new_sha,
+        priors={},
+        results=[],
+        commit_indices=commit_indices,
+    )
+    state.dump(repo_path)
+    bisector = get_bisector(state)
+    print_status(state, bisector)
+    select_and_checkout(repo_path, state, bisector)
+
+
+def cli_reset() -> None:
+    repo_path = Path.cwd()
+    (repo_path / ".git" / STATE_FILENAME).unlink(missing_ok=True)
+
+
+def cli_fail(commit: str | bytes | None) -> None:
+    repo_path = Path.cwd()
+    if commit is None:
+        commit = get_current_commit(repo_path)
+
+    state = State.from_git_state(repo_path)
+    state.results.append((resolve_commit(state.commit_indices, commit), Result.FAIL))
+    state.dump(repo_path)
+    bisector = get_bisector(state)
+    print_status(state, bisector)
+    select_and_checkout(repo_path, state, bisector)
+
+
+def cli_pass(commit: str | bytes | None) -> None:
+    repo_path = Path.cwd()
+    if commit is None:
+        commit = get_current_commit(repo_path)
+
+    state = State.from_git_state(repo_path)
+    state.results.append((resolve_commit(state.commit_indices, commit), Result.PASS))
+    state.dump(repo_path)
+    bisector = get_bisector(state)
+    print_status(state, bisector)
+    select_and_checkout(repo_path, state, bisector)
+
+
+def parse_options(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+
+    subparsers = parser.add_subparsers(required=True)
+
+    subparser = subparsers.add_parser("start")
+    subparser.set_defaults(command=cli_start)
+    subparser.add_argument("--old", help="Old commit hash", required=True)
+    subparser.add_argument("--new", help="New commit hash", default=None)
+
+    subparser = subparsers.add_parser("fail", aliases=["failure"])
+    subparser.set_defaults(command=cli_fail)
+    subparser.add_argument("--commit", default=None)
+
+    subparser = subparsers.add_parser("pass", aliases=["success"])
+    subparser.set_defaults(command=cli_pass)
+    subparser.add_argument("--commit", default=None)
+
+    subparser = subparsers.add_parser("reset")
+    subparser.set_defaults(command=cli_reset)
+
+    return parser.parse_args(argv)
+
+
+def main() -> None:
+    args = parse_options(sys.argv[1:])
+    command = args.__dict__.pop("command")
+    command(**args.__dict__)
+
+
+if __name__ == "__main__":
+    main()
