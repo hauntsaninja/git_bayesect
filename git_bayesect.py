@@ -3,8 +3,8 @@ from __future__ import annotations
 import argparse
 import enum
 import json
-import sys
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -251,7 +251,7 @@ class State:
             with open(repo_path / ".git" / STATE_FILENAME) as f:
                 state_dict = json.load(f)
         except FileNotFoundError:
-            raise BayesectError("No state file found, run `git bayesect start` first")
+            raise BayesectError("No state file found, run `git bayesect start` first") from None
 
         assert set(state_dict) == {"old_sha", "new_sha", "priors", "results"}
 
