@@ -228,6 +228,7 @@ class Result(enum.Enum):
 
 
 STATE_FILENAME = "BAYESECT_STATE"
+STATE_VERSION = 1
 
 
 class State:
@@ -247,6 +248,7 @@ class State:
 
     def dump(self, repo_path: Path) -> None:
         state_dict = {
+            "version": STATE_VERSION,
             "old_sha": self.old_sha.decode(),
             "new_sha": self.new_sha.decode(),
             "priors": {k.decode(): v for k, v in self.priors.items()},
@@ -259,11 +261,27 @@ class State:
     def from_git_state(cls, repo_path: Path) -> State:
         try:
             with open(repo_path / ".git" / STATE_FILENAME) as f:
-                state_dict = json.load(f)
+                data = f.read()
         except FileNotFoundError:
             raise BayesectError("No state file found, run `git bayesect start` first") from None
 
-        assert set(state_dict) == {"old_sha", "new_sha", "priors", "results"}
+        try:
+            state_dict = json.loads(data)
+        except json.JSONDecodeError:
+            raise BayesectError(
+                "Invalid state file, run `git bayesect reset` to start afresh"
+            ) from None
+
+        if not isinstance(state_dict, dict):
+            raise BayesectError("Invalid state file, run `git bayesect reset` to start afresh")
+
+        if state_dict.get("version") != STATE_VERSION:
+            raise BayesectError(
+                f"State file version {state_dict['version']} does not match, "
+                "run `git bayesect reset` to start afresh"
+            )
+
+        assert set(state_dict) == {"version", "old_sha", "new_sha", "priors", "results"}
 
         old_sha: bytes = state_dict["old_sha"].encode()
         new_sha: bytes = state_dict["new_sha"].encode()
