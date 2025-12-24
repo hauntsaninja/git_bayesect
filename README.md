@@ -53,6 +53,11 @@ Set prior for all commits based on filenames:
 git bayesect priors_from_filenames --filenames-callback "return 10 if any('suspicious' in f for f in filenames) else 1"
 ```
 
+Set the beta priors:
+```
+git bayesect beta_priors --alpha-new 0.9 --beta-new 0.1 --alpha-old 0.05 --beta-old 0.95
+```
+
 Get a log of commands to let you reconstruct the state:
 ```
 git bayesect log

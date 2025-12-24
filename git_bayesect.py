@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 from scipy.special import loggamma, logsumexp
@@ -28,7 +28,14 @@ class Bisector:
     We'd like to find B (and we don't know p_obs_new and p_obs_old).
     """
 
-    def __init__(self, prior_weights: list[float] | list[int] | ndarray) -> None:
+    def __init__(
+        self,
+        prior_weights: list[float] | list[int] | ndarray,
+        alpha_new: float = 0.9,
+        beta_new: float = 0.1,
+        alpha_old: float = 0.05,
+        beta_old: float = 0.95,
+    ) -> None:
         if isinstance(prior_weights, list):
             prior_weights = np.array(prior_weights, dtype=np.float64)
         assert isinstance(prior_weights, np.ndarray)
@@ -39,13 +46,13 @@ class Bisector:
         self.obs_yes = np.zeros_like(prior_weights, dtype=np.int64)
         self.obs_total = np.zeros_like(prior_weights, dtype=np.int64)
 
-        # p_obs_new ~ Beta(0.9, 0.1), so E[p_obs_new] = 0.9
-        self.alpha_new = 0.9
-        self.beta_new = 0.1
+        # E.g. p_obs_new ~ Beta(0.9, 0.1), so E[p_obs_new] = 0.9
+        self.alpha_new = alpha_new
+        self.beta_new = beta_new
 
-        # p_obs_old ~ Beta(0.05, 0.95), so E[p_obs_old] = 0.05
-        self.alpha_old = 0.05
-        self.beta_old = 0.95
+        # E.g. p_obs_old ~ Beta(0.05, 0.95), so E[p_obs_old] = 0.05
+        self.alpha_old = alpha_old
+        self.beta_old = beta_old
 
         self.post_weights: ndarray | None = None
 
@@ -229,8 +236,26 @@ class Result(enum.Enum):
     SKIP = "skip"
 
 
+class BetaPriors:
+    def __init__(
+        self, alpha_new: float, beta_new: float, alpha_old: float, beta_old: float
+    ) -> None:
+        self.alpha_new = alpha_new
+        self.beta_new = beta_new
+        self.alpha_old = alpha_old
+        self.beta_old = beta_old
+
+    def as_dict(self) -> dict[str, float]:
+        return {
+            "alpha_new": self.alpha_new,
+            "beta_new": self.beta_new,
+            "alpha_old": self.alpha_old,
+            "beta_old": self.beta_old,
+        }
+
+
 STATE_FILENAME = "BAYESECT_STATE"
-STATE_VERSION = 1
+STATE_VERSION = 2
 
 
 class State:
@@ -238,12 +263,14 @@ class State:
         self,
         old_sha: bytes,
         new_sha: bytes,
+        beta_priors: BetaPriors,
         priors: dict[bytes, float],
         results: list[tuple[bytes, Result]],
         commit_indices: dict[bytes, int],
     ) -> None:
         self.old_sha = old_sha
         self.new_sha = new_sha
+        self.beta_priors = beta_priors
         self.priors = priors
         self.results = results
         self.commit_indices = commit_indices
@@ -253,6 +280,7 @@ class State:
             "version": STATE_VERSION,
             "old_sha": self.old_sha.decode(),
             "new_sha": self.new_sha.decode(),
+            "beta_priors": self.beta_priors.as_dict(),
             "priors": {k.decode(): v for k, v in self.priors.items()},
             "results": [(k.decode(), v.value) for k, v in self.results],
         }
@@ -283,10 +311,18 @@ class State:
                 "run `git bayesect reset` to start afresh"
             )
 
-        assert set(state_dict) == {"version", "old_sha", "new_sha", "priors", "results"}
+        assert set(state_dict) == {
+            "version",
+            "old_sha",
+            "new_sha",
+            "beta_priors",
+            "priors",
+            "results",
+        }
 
         old_sha: bytes = state_dict["old_sha"].encode()
         new_sha: bytes = state_dict["new_sha"].encode()
+        beta_priors: BetaPriors = BetaPriors(**state_dict["beta_priors"])
         priors: dict[bytes, float] = {k.encode(): float(v) for k, v in state_dict["priors"].items()}
         results: list[tuple[bytes, Result]] = [
             (k.encode(), Result(v)) for k, v in state_dict["results"]
@@ -297,6 +333,7 @@ class State:
         return cls(
             old_sha=old_sha,
             new_sha=new_sha,
+            beta_priors=beta_priors,
             priors=priors,
             results=results,
             commit_indices=commit_indices,
@@ -389,7 +426,13 @@ def get_bisector(state: State) -> Bisector:
         assert 0 <= relative_index <= new_index - old_index
         prior[relative_index] = weight
 
-    bisector = Bisector(prior)
+    bisector = Bisector(
+        prior,
+        alpha_new=state.beta_priors.alpha_new,
+        beta_new=state.beta_priors.beta_new,
+        alpha_old=state.beta_priors.alpha_old,
+        beta_old=state.beta_priors.beta_old,
+    )
 
     for commit_sha, result in state.results:
         if result not in {Result.FAIL, Result.PASS}:
@@ -486,6 +529,7 @@ def cli_start(old: str, new: str | None) -> None:
     state = State(
         old_sha=old_sha,
         new_sha=new_sha,
+        beta_priors=BetaPriors(alpha_new=0.9, beta_new=0.1, alpha_old=0.05, beta_old=0.95),
         priors={},
         results=[],
         commit_indices=commit_indices,
@@ -589,6 +633,24 @@ def cli_priors_from_filenames(filenames_callback: str) -> None:
     select_and_checkout(repo_path, state, bisector)
 
 
+def cli_beta_priors(
+    alpha_new: float | None, beta_new: float | None, alpha_old: float | None, beta_old: float | None
+) -> None:
+    repo_path = Path.cwd()
+
+    state = State.from_git_state(repo_path)
+    if alpha_new is not None:
+        state.beta_priors.alpha_new = alpha_new
+    if beta_new is not None:
+        state.beta_priors.beta_new = beta_new
+    if alpha_old is not None:
+        state.beta_priors.alpha_old = alpha_old
+    if beta_old is not None:
+        state.beta_priors.beta_old = beta_old
+    state.dump(repo_path)
+    print(f"Updated beta priors to {state.beta_priors.as_dict()}")
+
+
 def cli_checkout() -> None:
     repo_path = Path.cwd()
     state = State.from_git_state(repo_path)
@@ -652,7 +714,13 @@ def cli_log() -> None:
     repo_path = Path.cwd()
     state = State.from_git_state(repo_path)
     print(f"git bayesect start --old {smolsha(state.old_sha)} --new {smolsha(state.new_sha)}")
-    print()
+    print(
+        f"git bayesect beta_priors "
+        f"--alpha-new {state.beta_priors.alpha_new} "
+        f"--beta-new {state.beta_priors.beta_new} "
+        f"--alpha-old {state.beta_priors.alpha_old} "
+        f"--beta-old {state.beta_priors.beta_old}"
+    )
 
     for commit, weight in state.priors.items():
         print(f"git bayesect prior --commit {smolsha(commit)} --weight {weight}")
@@ -702,6 +770,13 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
         "--filenames-callback", help="Python code returning a float given filenames", required=True
     )
     subparser.set_defaults(command=cli_priors_from_filenames)
+
+    subparser = subparsers.add_parser("beta_priors", aliases=["beta-priors"])
+    subparser.add_argument("--alpha-new", type=float)
+    subparser.add_argument("--beta-new", type=float)
+    subparser.add_argument("--alpha-old", type=float)
+    subparser.add_argument("--beta-old", type=float)
+    subparser.set_defaults(command=cli_beta_priors)
 
     subparser = subparsers.add_parser("checkout")
     subparser.set_defaults(command=cli_checkout)
