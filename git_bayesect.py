@@ -543,7 +543,7 @@ def cli_priors_from_filenames(filenames_callback: str) -> None:
     select_and_checkout(repo_path, state, bisector)
 
 
-def cli_log() -> None:
+def cli_status() -> None:
     repo_path = Path.cwd()
     state = State.from_git_state(repo_path)
 
@@ -594,6 +594,27 @@ def cli_log() -> None:
     print_status(state, bisector)
 
 
+def cli_log() -> None:
+    repo_path = Path.cwd()
+    state = State.from_git_state(repo_path)
+    print(
+        f"git bayesect start --old {state.old_sha.decode()[:8]} --new {state.new_sha.decode()[:8]}"
+    )
+    print()
+
+    for commit, weight in state.priors.items():
+        print(f"git bayesect prior --commit {commit.decode()[:8]} --weight {weight}")
+    print()
+
+    for commit, result in state.results:
+        if result == Result.PASS:
+            print(f"git bayesect pass {commit.decode()[:8]}")
+        elif result == Result.FAIL:
+            print(f"git bayesect fail {commit.decode()[:8]}")
+        elif result == Result.SKIP:
+            print(f"git bayesect skip {commit.decode()[:8]}")
+
+
 def parse_options(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
@@ -625,6 +646,9 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
         "--filenames-callback", help="Python code returning a float given filenames", required=True
     )
     subparser.set_defaults(command=cli_priors_from_filenames)
+
+    subparser = subparsers.add_parser("status")
+    subparser.set_defaults(command=cli_status)
 
     subparser = subparsers.add_parser("log")
     subparser.set_defaults(command=cli_log)

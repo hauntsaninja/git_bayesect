@@ -31,9 +31,9 @@ Or on a specific commit:
 git bayesect success --commit $COMMIT
 ```
 
-Check the log:
+Check the status:
 ```
-git bayesect log
+git bayesect status
 ```
 
 Reset:
