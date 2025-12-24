@@ -207,7 +207,7 @@ class Bisector:
         tail = (1 - mass) / 2
         left = np.searchsorted(cumsum, tail, side="left")
         right = np.searchsorted(cumsum, 1 - tail, side="right")
-        right = min(right, len(cumsum) - 1)  # type: ignore[call-overload]
+        right = min(right, len(cumsum) - 1)  # type: ignore[arg-type]
 
         return int(left), int(right)
 
@@ -427,7 +427,7 @@ def select_and_checkout(repo_path: Path, state: State, bisector: Bisector) -> No
     )
 
 
-def cli_start(old: str, new: str | bytes | None) -> None:
+def cli_start(old: str, new: str | None) -> None:
     repo_path = Path.cwd()
     new_sha = parse_commit(repo_path, new)
     old_sha = parse_commit(repo_path, old)
