@@ -504,6 +504,16 @@ def cli_pass(commit: str | bytes | None) -> None:
     select_and_checkout(repo_path, state, bisector)
 
 
+def cli_prior(commit: str | bytes, weight: float) -> None:
+    repo_path = Path.cwd()
+    commit = parse_commit(repo_path, commit)
+
+    state = State.from_git_state(repo_path)
+    state.priors[commit] = weight
+    state.dump(repo_path)
+    print(f"Updated prior for {commit.decode()[:8]} to {weight}")
+
+
 def cli_priors_from_filenames(filenames_callback: str) -> None:
     repo_path = Path.cwd()
 
@@ -604,6 +614,11 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
 
     subparser = subparsers.add_parser("reset")
     subparser.set_defaults(command=cli_reset)
+
+    subparser = subparsers.add_parser("prior")
+    subparser.add_argument("--commit", required=True)
+    subparser.add_argument("--weight", type=float, required=True)
+    subparser.set_defaults(command=cli_prior)
 
     subparser = subparsers.add_parser("priors_from_filenames", aliases=["priors-from-filenames"])
     subparser.add_argument(
