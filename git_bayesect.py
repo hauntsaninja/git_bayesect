@@ -319,6 +319,32 @@ def get_current_commit(repo_path: Path) -> bytes:
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_path).strip()
 
 
+def get_commit_files_mapping(repo_path: Path, commits: list[bytes]) -> dict[bytes, list[str]]:
+    output = subprocess.check_output(
+        [
+            "git",
+            "diff-tree",
+            "--stdin",
+            "-r",
+            "--root",
+            "--name-only",
+            "--no-renames",
+            "-z",
+            "--pretty=format:%H%x00",
+        ],
+        cwd=repo_path,
+        input=b"\n".join(commits),
+    )
+    sections = output.split(b"\x00\x00")
+    ret = {}
+    for s in sections:
+        commit, section = s.split(b"\n")
+        commit = commit.rstrip(b"\x00")
+        files = section.rstrip(b"\x00").split(b"\x00")
+        ret[commit] = [p.decode() for p in files]
+    return ret
+
+
 # ==============================
 # CLI logic
 # ==============================
@@ -478,6 +504,35 @@ def cli_pass(commit: str | bytes | None) -> None:
     select_and_checkout(repo_path, state, bisector)
 
 
+def cli_priors_from_filenames(filenames_callback: str) -> None:
+    repo_path = Path.cwd()
+
+    state = State.from_git_state(repo_path)
+    files_mapping = get_commit_files_mapping(repo_path, commits=list(state.commit_indices.keys()))
+
+    cb_globals: dict[str, Any] = {}
+    cb_locals: dict[str, Any] = {}
+
+    import textwrap
+
+    filenames_callback = textwrap.indent(filenames_callback, "  ")
+    filenames_callback = f"def _callback(filenames: list[str]) -> float:\n{filenames_callback}"
+    exec(filenames_callback, cb_globals, cb_locals)
+    filenames_fn = cb_locals["_callback"]
+
+    for commit, files in files_mapping.items():
+        prior = filenames_fn(files)
+        if prior is not None:
+            assert isinstance(prior, (int, float))
+            state.priors[commit] = prior
+    state.dump(repo_path)
+    print(f"Updated priors for {len(state.priors)} commits")
+
+    bisector = get_bisector(state)
+    print_status(state, bisector)
+    select_and_checkout(repo_path, state, bisector)
+
+
 def cli_log() -> None:
     repo_path = Path.cwd()
     state = State.from_git_state(repo_path)
@@ -549,6 +604,12 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
 
     subparser = subparsers.add_parser("reset")
     subparser.set_defaults(command=cli_reset)
+
+    subparser = subparsers.add_parser("priors_from_filenames", aliases=["priors-from-filenames"])
+    subparser.add_argument(
+        "--filenames-callback", help="Python code returning a float given filenames", required=True
+    )
+    subparser.set_defaults(command=cli_priors_from_filenames)
 
     subparser = subparsers.add_parser("log")
     subparser.set_defaults(command=cli_log)
