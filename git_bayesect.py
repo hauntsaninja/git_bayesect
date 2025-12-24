@@ -14,6 +14,11 @@ from scipy.special import loggamma, logsumexp
 ndarray = np.ndarray[Any, Any]
 
 
+# ==============================
+# Core pure logic
+# ==============================
+
+
 class Bisector:
     """
     There is some index B such that for all index:
@@ -207,6 +212,11 @@ class Bisector:
         return int(left), int(right)
 
 
+# ==============================
+# State logic
+# ==============================
+
+
 class BayesectError(Exception):
     pass
 
@@ -273,6 +283,11 @@ class State:
         )
 
 
+# ==============================
+# Git logic
+# ==============================
+
+
 def parse_commit(repo_path: Path, commit: str | bytes | None) -> bytes:
     if isinstance(commit, bytes):
         assert len(commit) == 40
@@ -304,9 +319,15 @@ def get_current_commit(repo_path: Path) -> bytes:
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_path).strip()
 
 
+# ==============================
+# CLI logic
+# ==============================
+
+
 def get_bisector(state: State) -> Bisector:
     old_index = state.commit_indices[state.old_sha]
     new_index = state.commit_indices[state.new_sha]
+    assert new_index >= old_index
 
     prior = np.ones(new_index - old_index + 1)
     for commit_sha, weight in state.priors.items():
