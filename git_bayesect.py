@@ -32,6 +32,8 @@ class Bisector:
         if isinstance(prior_weights, list):
             prior_weights = np.array(prior_weights, dtype=np.float64)
         assert isinstance(prior_weights, np.ndarray)
+        if np.any(prior_weights < 0):
+            raise ValueError("prior_weights must be >= 0")
         self.prior_weights = prior_weights
 
         self.obs_yes = np.zeros_like(prior_weights, dtype=np.int64)
