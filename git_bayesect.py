@@ -288,6 +288,10 @@ class State:
 # ==============================
 
 
+def smolsha(commit: bytes) -> str:
+    return commit.decode()[:10]
+
+
 def parse_commit(repo_path: Path, commit: str | bytes | None) -> bytes:
     if isinstance(commit, bytes):
         assert len(commit) == 40
@@ -406,14 +410,14 @@ def print_status(state: State, bisector: Bisector) -> None:
     p90_range = p90_right - p90_left + 1
 
     indices_commits = {i: c for c, i in state.commit_indices.items()}
-    most_likely_commit = indices_commits[new_index - most_likely_index].decode()[:8]
-    p90_left_commit = indices_commits[new_index - p90_left].decode()[:8]
-    p90_right_commit = indices_commits[new_index - p90_right].decode()[:8]
+    most_likely_commit = smolsha(indices_commits[new_index - most_likely_index])
+    p90_left_commit = smolsha(indices_commits[new_index - p90_left])
+    p90_right_commit = smolsha(indices_commits[new_index - p90_right])
 
     print("=" * 80)
 
     if most_likely_prob >= 0.95:
-        most_likely_commit = indices_commits[new_index - most_likely_index].decode()[:8]
+        most_likely_commit = smolsha(indices_commits[new_index - most_likely_index])
         msg = (
             f"Bisection converged to {most_likely_commit} ({most_likely_prob:.1%}) "
             f"after {bisector.num_total_observations} observations\n"
@@ -447,7 +451,7 @@ def select_and_checkout(repo_path: Path, state: State, bisector: Bisector) -> No
     commit_index = new_index - relative_index
     commit_sha = {c: i for i, c in state.commit_indices.items()}[commit_index]
 
-    print(f"Checking out next commit to test: {commit_sha.decode()[:8]}")
+    print(f"Checking out next commit to test: {smolsha(commit_sha)}")
     subprocess.run(
         ["git", "checkout", commit_sha.decode()], cwd=repo_path, check=True, capture_output=True
     )
@@ -512,11 +516,11 @@ def cli_undo() -> None:
         commit, result = state.results.pop()
         match result:
             case Result.FAIL:
-                print(f"Undid last observation: git bayesect fail {commit.decode()[:8]}")
+                print(f"Undid last observation: git bayesect fail {smolsha(commit)}")
             case Result.PASS:
-                print(f"Undid last observation: git bayesect pass {commit.decode()[:8]}")
+                print(f"Undid last observation: git bayesect pass {smolsha(commit)}")
             case Result.SKIP:
-                print(f"Undid last observation: git bayesect skip {commit.decode()[:8]}")
+                print(f"Undid last observation: git bayesect skip {smolsha(commit)}")
     else:
         raise BayesectError("No observation to undo")
     state.dump(repo_path)
@@ -533,7 +537,7 @@ def cli_prior(commit: str | bytes, weight: float) -> None:
     state = State.from_git_state(repo_path)
     state.priors[commit] = weight
     state.dump(repo_path)
-    print(f"Updated prior for {commit.decode()[:8]} to {weight}")
+    print(f"Updated prior for {smolsha(commit)} to {weight}")
 
 
 def cli_priors_from_filenames(filenames_callback: str) -> None:
@@ -596,7 +600,7 @@ def cli_status() -> None:
             )
         rows.append(
             (
-                commit.decode()[:8],
+                smolsha(commit),
                 f"{dist[relative_index]:.1%}",
                 observations,
                 f"{dist_p_obs_new[relative_index]:.1%}",
@@ -627,23 +631,21 @@ def cli_status() -> None:
 def cli_log() -> None:
     repo_path = Path.cwd()
     state = State.from_git_state(repo_path)
-    print(
-        f"git bayesect start --old {state.old_sha.decode()[:8]} --new {state.new_sha.decode()[:8]}"
-    )
+    print(f"git bayesect start --old {smolsha(state.old_sha)} --new {smolsha(state.new_sha)}")
     print()
 
     for commit, weight in state.priors.items():
-        print(f"git bayesect prior --commit {commit.decode()[:8]} --weight {weight}")
+        print(f"git bayesect prior --commit {smolsha(commit)} --weight {weight}")
     print()
 
     for commit, result in state.results:
         match result:
             case Result.PASS:
-                print(f"git bayesect pass {commit.decode()[:8]}")
+                print(f"git bayesect pass {smolsha(commit)}")
             case Result.FAIL:
-                print(f"git bayesect fail {commit.decode()[:8]}")
+                print(f"git bayesect fail {smolsha(commit)}")
             case Result.SKIP:
-                print(f"git bayesect skip {commit.decode()[:8]}")
+                print(f"git bayesect skip {smolsha(commit)}")
 
 
 def parse_options(argv: list[str]) -> argparse.Namespace:
