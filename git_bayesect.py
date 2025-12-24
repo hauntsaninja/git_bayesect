@@ -543,6 +543,14 @@ def cli_priors_from_filenames(filenames_callback: str) -> None:
     select_and_checkout(repo_path, state, bisector)
 
 
+def cli_checkout() -> None:
+    repo_path = Path.cwd()
+    state = State.from_git_state(repo_path)
+    bisector = get_bisector(state)
+    print_status(state, bisector)
+    select_and_checkout(repo_path, state, bisector)
+
+
 def cli_status() -> None:
     repo_path = Path.cwd()
     state = State.from_git_state(repo_path)
@@ -646,6 +654,9 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
         "--filenames-callback", help="Python code returning a float given filenames", required=True
     )
     subparser.set_defaults(command=cli_priors_from_filenames)
+
+    subparser = subparsers.add_parser("checkout")
+    subparser.set_defaults(command=cli_checkout)
 
     subparser = subparsers.add_parser("status")
     subparser.set_defaults(command=cli_status)
