@@ -504,6 +504,28 @@ def cli_pass(commit: str | bytes | None) -> None:
     select_and_checkout(repo_path, state, bisector)
 
 
+def cli_undo() -> None:
+    repo_path = Path.cwd()
+
+    state = State.from_git_state(repo_path)
+    if state.results:
+        commit, result = state.results.pop()
+        match result:
+            case Result.FAIL:
+                print(f"Undid last observation: git bayesect fail {commit.decode()[:8]}")
+            case Result.PASS:
+                print(f"Undid last observation: git bayesect pass {commit.decode()[:8]}")
+            case Result.SKIP:
+                print(f"Undid last observation: git bayesect skip {commit.decode()[:8]}")
+    else:
+        raise BayesectError("No observation to undo")
+    state.dump(repo_path)
+
+    bisector = get_bisector(state)
+    print_status(state, bisector)
+    select_and_checkout(repo_path, state, get_bisector(state))
+
+
 def cli_prior(commit: str | bytes, weight: float) -> None:
     repo_path = Path.cwd()
     commit = parse_commit(repo_path, commit)
@@ -615,12 +637,13 @@ def cli_log() -> None:
     print()
 
     for commit, result in state.results:
-        if result == Result.PASS:
-            print(f"git bayesect pass {commit.decode()[:8]}")
-        elif result == Result.FAIL:
-            print(f"git bayesect fail {commit.decode()[:8]}")
-        elif result == Result.SKIP:
-            print(f"git bayesect skip {commit.decode()[:8]}")
+        match result:
+            case Result.PASS:
+                print(f"git bayesect pass {commit.decode()[:8]}")
+            case Result.FAIL:
+                print(f"git bayesect fail {commit.decode()[:8]}")
+            case Result.SKIP:
+                print(f"git bayesect skip {commit.decode()[:8]}")
 
 
 def parse_options(argv: list[str]) -> argparse.Namespace:
@@ -640,6 +663,9 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
     subparser = subparsers.add_parser("pass", aliases=["success"])
     subparser.set_defaults(command=cli_pass)
     subparser.add_argument("--commit", default=None)
+
+    subparser = subparsers.add_parser("undo")
+    subparser.set_defaults(command=cli_undo)
 
     subparser = subparsers.add_parser("reset")
     subparser.set_defaults(command=cli_reset)
