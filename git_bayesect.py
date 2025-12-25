@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
-from scipy.special import loggamma, logsumexp
 
 ndarray = np.ndarray[Any, Any]
 
@@ -69,6 +68,8 @@ class Bisector:
             self._update_posteriors()
 
     def _update_posteriors(self) -> None:
+        from scipy.special import loggamma, logsumexp
+
         # fmt: off
         # left:  yes and no counts on or before index
         # right: yes and no counts after index
