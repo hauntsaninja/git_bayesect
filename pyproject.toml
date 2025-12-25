@@ -1,6 +1,6 @@
 [project]
 name = "git_bayesect"
-version = "0.1.0"
+version = "1.0"
 authors = [{name = "Shantanu Jain"}, {email = "hauntsaninja@gmail.com"}]
 description = "Git bisection with Bayesian statistics"
 readme = "README.md"

@@ -11,7 +11,7 @@ has changed at some point in some direction
 ## Installation
 
 ```
-uv pip install git+https://github.com/hauntsaninja/git_bayesect
+pip install git_bayesect
 ```
 
 ## Usage
