@@ -29,8 +29,8 @@ ndarray = np.ndarray[Any, Any]
 class Bisector:
     """
     There is some index B such that for all index:
-        P(obs_yes | index >= B) = p_obs_new
-        P(obs_yes | index < B) = p_obs_old
+        P(obs_yes | index <= B) = p_obs_new
+        P(obs_yes | index > B) = p_obs_old
 
     We'd like to find B (and we don't know p_obs_new and p_obs_old).
     """
@@ -609,11 +609,14 @@ def cli_undo() -> None:
 
     bisector = get_bisector(state)
     print_status(repo_path, state, bisector)
-    select_and_checkout(repo_path, state, get_bisector(state))
+    select_and_checkout(repo_path, state, bisector)
 
 
 def cli_run(cmd: list[str]) -> None:
     repo_path = Path.cwd()
+
+    if not cmd:
+        raise BayesectError("No command to run")
 
     state = State.from_git_state(repo_path)
     bisector = get_bisector(state)
