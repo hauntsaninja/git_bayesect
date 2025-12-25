@@ -316,7 +316,7 @@ class State:
 
         if state_dict.get("version") != STATE_VERSION:
             raise BayesectError(
-                f"State file version {state_dict['version']} does not match, "
+                f"State file version {state_dict.get('version')} does not match, "
                 "run `git bayesect reset` to start afresh"
             )
 
