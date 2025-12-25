@@ -673,6 +673,7 @@ def cli_status() -> None:
 
     bisector = get_bisector(state)
     new_index = state.commit_indices[state.new_sha]
+    old_index = state.commit_indices[state.old_sha]
 
     dist = bisector.distribution
     dist_p_obs_new, dist_p_obs_old = bisector.empirical_p_obs
@@ -697,6 +698,7 @@ def cli_status() -> None:
                 f"({yes_new[relative_index]}/{total_new[relative_index]})",
                 f"{dist_p_obs_old[relative_index]:.1%}",
                 f"({yes_old[relative_index]}/{total_old[relative_index]})",
+                "yes" if dist[relative_index] > max(0.1, 2 / (new_index - old_index + 1)) else "",
             )
         )
         if commit == state.old_sha:
@@ -704,7 +706,18 @@ def cli_status() -> None:
 
     widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
 
-    for commit_str, likelihood, observations, p_obs_new, c_obs_new, p_obs_old, c_obs_old in rows:
+    for (
+        commit_str,
+        likelihood,
+        observations,
+        p_obs_new,
+        c_obs_new,
+        p_obs_old,
+        c_obs_old,
+        should_highlight,
+    ) in rows:
+        if should_highlight:
+            print("\033[103m", end="")
         print(
             f"{commit_str:<{widths[0]}} "
             f"likelihood {likelihood:<{widths[1]}}, "
@@ -712,9 +725,13 @@ def cli_status() -> None:
             f"subsequent failure rate {p_obs_new:<{widths[3]}} "
             f"{c_obs_new:<{widths[4]}}, "
             f"prior failure rate {p_obs_old:<{widths[5]}} "
-            f"{c_obs_old:<{widths[6]}}"
+            f"{c_obs_old:<{widths[6]}}",
+            end="",
         )
-
+        if should_highlight:
+            print("\033[0m")
+        else:
+            print()
     print_status(state, bisector)
 
 
