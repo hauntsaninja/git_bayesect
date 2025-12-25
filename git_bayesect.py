@@ -768,11 +768,11 @@ def cli_log() -> None:
     for commit, result in state.results:
         match result:
             case Result.PASS:
-                print(f"git bayesect pass {smolsha(commit)}")
+                print(f"git bayesect pass --commit {smolsha(commit)}")
             case Result.FAIL:
-                print(f"git bayesect fail {smolsha(commit)}")
+                print(f"git bayesect fail --commit {smolsha(commit)}")
             case Result.SKIP:
-                print(f"git bayesect skip {smolsha(commit)}")
+                print(f"git bayesect skip --commit {smolsha(commit)}")
 
 
 def parse_options(argv: list[str]) -> argparse.Namespace:
