@@ -618,21 +618,26 @@ def cli_run(cmd: list[str]) -> None:
     state = State.from_git_state(repo_path)
     bisector = get_bisector(state)
 
-    while True:
-        current_commit = select_and_checkout(repo_path, state, bisector)
-        proc = subprocess.run(cmd, cwd=repo_path, check=False)
-        result = Result.PASS if proc.returncode == 0 else Result.FAIL
+    old_index = state.commit_indices[state.old_sha]
+    new_index = state.commit_indices[state.new_sha]
+    assert new_index >= old_index
 
-        state.results.append((current_commit, result))
-        relative_index = state.commit_indices[state.new_sha] - state.commit_indices[current_commit]
-        assert 0 <= relative_index
-        bisector.record(relative_index, result == Result.FAIL)
+    try:
+        while True:
+            commit = select_and_checkout(repo_path, state, bisector)
+            proc = subprocess.run(cmd, cwd=repo_path, check=False)
+            result = Result.PASS if proc.returncode == 0 else Result.FAIL
 
-        print_status(repo_path, state, bisector)
-        if bisector.distribution.max() >= 0.95:
-            break
+            state.results.append((commit, result))
+            relative_index = new_index - state.commit_indices[commit]
+            assert 0 <= relative_index <= new_index - old_index
+            bisector.record(relative_index, result == Result.FAIL)
 
-    state.dump(repo_path)
+            print_status(repo_path, state, bisector)
+            if bisector.distribution.max() >= 0.95:
+                break
+    finally:
+        state.dump(repo_path)
 
 
 def cli_prior(commit: str | bytes, weight: float) -> None:
