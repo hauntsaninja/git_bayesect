@@ -658,10 +658,15 @@ def cli_beta_priors(
     state.dump(repo_path)
     print(f"Updated beta priors to {state.beta_priors.as_dict()}")
 
+    bisector = get_bisector(state)
+    print_status(state, bisector)
+    select_and_checkout(repo_path, state, bisector)
+
 
 def cli_checkout() -> None:
     repo_path = Path.cwd()
     state = State.from_git_state(repo_path)
+
     bisector = get_bisector(state)
     print_status(state, bisector)
     select_and_checkout(repo_path, state, bisector)
