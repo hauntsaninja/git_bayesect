@@ -14,7 +14,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 import numpy as np
 
@@ -832,7 +832,11 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
 def main() -> None:
     args = parse_options(sys.argv[1:])
     command = args.__dict__.pop("command")
-    command(**args.__dict__)
+    try:
+        command(**args.__dict__)
+    except BayesectError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
