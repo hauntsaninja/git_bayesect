@@ -68,6 +68,11 @@ Undo the last observation:
 git bayesect undo
 ```
 
+Run the bisection automatically using a command to make observations:
+```
+git bayesect run $CMD
+```
+
 Checkout the best commmit to test:
 ```
 git bayesect checkout

@@ -524,7 +524,7 @@ def print_status(repo_path: Path, state: State, bisector: Bisector) -> None:
         print("=" * 80)
 
 
-def select_and_checkout(repo_path: Path, state: State, bisector: Bisector) -> None:
+def select_and_checkout(repo_path: Path, state: State, bisector: Bisector) -> bytes:
     new_index = state.commit_indices[state.new_sha]
 
     relative_index = bisector.select()
@@ -535,6 +535,7 @@ def select_and_checkout(repo_path: Path, state: State, bisector: Bisector) -> No
     subprocess.run(
         ["git", "checkout", commit_sha.decode()], cwd=repo_path, check=True, capture_output=True
     )
+    return commit_sha
 
 
 def cli_start(old: str, new: str | None) -> None:
@@ -609,6 +610,29 @@ def cli_undo() -> None:
     bisector = get_bisector(state)
     print_status(repo_path, state, bisector)
     select_and_checkout(repo_path, state, get_bisector(state))
+
+
+def cli_run(cmd: list[str]) -> None:
+    repo_path = Path.cwd()
+
+    state = State.from_git_state(repo_path)
+    bisector = get_bisector(state)
+
+    while True:
+        current_commit = select_and_checkout(repo_path, state, bisector)
+        proc = subprocess.run(cmd, cwd=repo_path, check=False)
+        result = Result.PASS if proc.returncode == 0 else Result.FAIL
+
+        state.results.append((current_commit, result))
+        relative_index = state.commit_indices[state.new_sha] - state.commit_indices[current_commit]
+        assert 0 <= relative_index
+        bisector.record(relative_index, result == Result.FAIL)
+
+        print_status(repo_path, state, bisector)
+        if bisector.distribution.max() >= 0.95:
+            break
+
+    state.dump(repo_path)
 
 
 def cli_prior(commit: str | bytes, weight: float) -> None:
@@ -825,6 +849,10 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
 
     subparser = subparsers.add_parser("log")
     subparser.set_defaults(command=cli_log)
+
+    subparser = subparsers.add_parser("run")
+    subparser.set_defaults(command=cli_run)
+    subparser.add_argument("cmd", nargs=argparse.REMAINDER)
 
     return parser.parse_args(argv)
 
