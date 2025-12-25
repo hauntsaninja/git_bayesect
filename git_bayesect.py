@@ -462,7 +462,7 @@ def get_bisector(state: State) -> Bisector:
     return bisector
 
 
-def print_status(state: State, bisector: Bisector) -> None:
+def print_status(repo_path: Path, state: State, bisector: Bisector) -> None:
     new_index = state.commit_indices[state.new_sha]
     old_index = state.commit_indices[state.old_sha]
 
@@ -486,8 +486,6 @@ def print_status(state: State, bisector: Bisector) -> None:
     p90_left_commit = smolsha(indices_commits[new_index - p90_left])
     p90_right_commit = smolsha(indices_commits[new_index - p90_right])
 
-    print("=" * 80)
-
     if most_likely_prob >= 0.95:
         most_likely_commit = smolsha(indices_commits[new_index - most_likely_index])
         msg = (
@@ -497,7 +495,17 @@ def print_status(state: State, bisector: Bisector) -> None:
             f"prior failure rate is {most_likely_p_obs_old:.1%}"
         )
         msg = msg.rstrip()
+        print("=" * 80)
         print(msg)
+        print("=" * 80)
+
+        print(
+            subprocess.check_output(
+                ["git", "show", "--color", "--no-patch", "--stat", most_likely_commit],
+                cwd=repo_path,
+            ).decode()
+        )
+        print("=" * 80)
     else:
         msg = (
             f"Bisection narrowed to `{p90_right_commit}^...{p90_left_commit}` "
@@ -511,9 +519,9 @@ def print_status(state: State, bisector: Bisector) -> None:
             msg += f"prior failure rate is {most_likely_p_obs_old:.1%}\n"
 
         msg = msg.rstrip()
+        print("=" * 80)
         print(msg)
-
-    print("=" * 80)
+        print("=" * 80)
 
 
 def select_and_checkout(repo_path: Path, state: State, bisector: Bisector) -> None:
@@ -546,7 +554,7 @@ def cli_start(old: str, new: str | None) -> None:
     state.dump(repo_path)
 
     bisector = get_bisector(state)
-    print_status(state, bisector)
+    print_status(repo_path, state, bisector)
     select_and_checkout(repo_path, state, bisector)
 
 
@@ -564,7 +572,7 @@ def cli_fail(commit: str | bytes | None) -> None:
     state.dump(repo_path)
 
     bisector = get_bisector(state)
-    print_status(state, bisector)
+    print_status(repo_path, state, bisector)
     select_and_checkout(repo_path, state, bisector)
 
 
@@ -577,7 +585,7 @@ def cli_pass(commit: str | bytes | None) -> None:
     state.dump(repo_path)
 
     bisector = get_bisector(state)
-    print_status(state, bisector)
+    print_status(repo_path, state, bisector)
     select_and_checkout(repo_path, state, bisector)
 
 
@@ -599,7 +607,7 @@ def cli_undo() -> None:
     state.dump(repo_path)
 
     bisector = get_bisector(state)
-    print_status(state, bisector)
+    print_status(repo_path, state, bisector)
     select_and_checkout(repo_path, state, get_bisector(state))
 
 
@@ -638,7 +646,7 @@ def cli_priors_from_filenames(filenames_callback: str) -> None:
     print(f"Updated priors for {len(state.priors)} commits")
 
     bisector = get_bisector(state)
-    print_status(state, bisector)
+    print_status(repo_path, state, bisector)
     select_and_checkout(repo_path, state, bisector)
 
 
@@ -660,7 +668,7 @@ def cli_beta_priors(
     print(f"Updated beta priors to {state.beta_priors.as_dict()}")
 
     bisector = get_bisector(state)
-    print_status(state, bisector)
+    print_status(repo_path, state, bisector)
     select_and_checkout(repo_path, state, bisector)
 
 
@@ -669,7 +677,7 @@ def cli_checkout() -> None:
     state = State.from_git_state(repo_path)
 
     bisector = get_bisector(state)
-    print_status(state, bisector)
+    print_status(repo_path, state, bisector)
     select_and_checkout(repo_path, state, bisector)
 
 
@@ -738,7 +746,7 @@ def cli_status() -> None:
             print("\033[0m")
         else:
             print()
-    print_status(state, bisector)
+    print_status(repo_path, state, bisector)
 
 
 def cli_log() -> None:
