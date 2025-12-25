@@ -293,13 +293,13 @@ class State:
             "priors": {k.decode(): v for k, v in self.priors.items()},
             "results": [(k.decode(), v.value) for k, v in self.results],
         }
-        with open(repo_path / ".git" / STATE_FILENAME, "w") as f:
+        with open(git_dir(repo_path) / STATE_FILENAME, "w") as f:
             json.dump(state_dict, f)
 
     @classmethod
     def from_git_state(cls, repo_path: Path) -> State:
         try:
-            with open(repo_path / ".git" / STATE_FILENAME) as f:
+            with open(git_dir(repo_path) / STATE_FILENAME) as f:
                 data = f.read()
         except FileNotFoundError:
             raise BayesectError("No state file found, run `git bayesect start` first") from None
@@ -356,6 +356,11 @@ class State:
 
 def smolsha(commit: bytes) -> str:
     return commit.decode()[:10]
+
+
+def git_dir(path: Path) -> Path:
+    path_str = subprocess.check_output(["git", "rev-parse", "--git-dir"], cwd=path)
+    return Path(path_str.strip().decode()).absolute()
 
 
 def parse_commit(repo_path: Path, commit: str | bytes | None) -> bytes:
@@ -561,7 +566,7 @@ def cli_start(old: str, new: str | None) -> None:
 
 def cli_reset() -> None:
     repo_path = Path.cwd()
-    (repo_path / ".git" / STATE_FILENAME).unlink(missing_ok=True)
+    (git_dir(repo_path) / STATE_FILENAME).unlink(missing_ok=True)
 
 
 def cli_fail(commit: str | bytes | None) -> None:
