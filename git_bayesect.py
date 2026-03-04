@@ -467,6 +467,20 @@ def get_bisector(state: State) -> Bisector:
     return bisector
 
 
+def print_beta_priors(state: State) -> None:
+    print(
+        f"Prior of failure at new commit is "
+        f"{state.beta_priors.alpha_new / (state.beta_priors.alpha_new + state.beta_priors.beta_new):.0%} "
+        f"(α_new = {state.beta_priors.alpha_new}, β_new = {state.beta_priors.beta_new})"
+    )
+    print(
+        f"Prior of failure at old commit is "
+        f"{state.beta_priors.alpha_old / (state.beta_priors.alpha_old + state.beta_priors.beta_old):.0%} "
+        f"(α_old = {state.beta_priors.alpha_old}, β_old = {state.beta_priors.beta_old})"
+    )
+    print("=" * 80)
+
+
 def print_status(repo_path: Path, state: State, bisector: Bisector) -> None:
     new_index = state.commit_indices[state.new_sha]
     old_index = state.commit_indices[state.old_sha]
@@ -561,6 +575,7 @@ def cli_start(old: str, new: str | None) -> None:
 
     bisector = get_bisector(state)
     print_status(repo_path, state, bisector)
+    print_beta_priors(state)
     select_and_checkout(repo_path, state, bisector)
 
 
@@ -702,10 +717,10 @@ def cli_beta_priors(
     if beta_old is not None:
         state.beta_priors.beta_old = beta_old
     state.dump(repo_path)
-    print(f"Updated beta priors to {state.beta_priors.as_dict()}")
 
     bisector = get_bisector(state)
     print_status(repo_path, state, bisector)
+    print_beta_priors(state)
     select_and_checkout(repo_path, state, bisector)
 
 
