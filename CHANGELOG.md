@@ -2,8 +2,9 @@
 
 ## Unreleased
 
+- Add `priors_from_text` command for setting priors based on commit message + diff text
+- Print the beta priors on bayesect start
 - Improve help output
-- Print beta priors on start
 
 ## [v1.0]
 

@@ -420,6 +420,26 @@ def get_commit_files_mapping(repo_path: Path, commits: list[bytes]) -> dict[byte
     return ret
 
 
+def get_commit_text_mapping(repo_path: Path, commits: list[bytes]) -> dict[bytes, str]:
+    ret = {}
+    for commit in commits:
+        output = subprocess.check_output(
+            [
+                "git",
+                "show",
+                "--no-color",
+                "--format=%B",
+                "--patch",
+                "--no-ext-diff",
+                "--no-renames",
+                commit.decode(),
+            ],
+            cwd=repo_path,
+        )
+        ret[commit] = output.decode(errors="replace")
+    return ret
+
+
 # ==============================
 # CLI logic
 # ==============================
@@ -696,9 +716,40 @@ def cli_priors_from_filenames(filenames_callback: str) -> None:
     for commit, files in files_mapping.items():
         prior = filenames_fn(files)
         if prior is not None:
-            assert isinstance(prior, (int, float))
-            if prior < 0:
-                raise BayesectError("Weight for prior must be non-negative") from None
+            if not isinstance(prior, (int, float)) or prior < 0:
+                raise BayesectError("Weight for prior must be non-negative number")
+            state.priors[commit] = prior
+    state.dump(repo_path)
+    print(f"Updated priors for {len(state.priors)} commits")
+
+    bisector = get_bisector(state)
+    print_status(repo_path, state, bisector)
+    select_and_checkout(repo_path, state, bisector)
+
+
+def cli_priors_from_text(text_callback: str) -> None:
+    if "return" not in text_callback:
+        raise BayesectError("text callback must end with a return statement")
+    repo_path = Path.cwd()
+
+    state = State.from_git_state(repo_path)
+    text_mapping = get_commit_text_mapping(repo_path, commits=list(state.commit_indices.keys()))
+
+    cb_globals: dict[str, Any] = {}
+    cb_locals: dict[str, Any] = {}
+
+    import textwrap
+
+    text_callback = textwrap.indent(text_callback, "  ")
+    text_callback = f"def _callback(text: str) -> float:\n{text_callback}"
+    exec(text_callback, cb_globals, cb_locals)
+    text_fn = cb_locals["_callback"]
+
+    for commit, text in text_mapping.items():
+        prior = text_fn(text)
+        if prior is not None:
+            if not isinstance(prior, (int, float)) or prior < 0:
+                raise BayesectError("Weight for prior must be non-negative number")
             state.priors[commit] = prior
     state.dump(repo_path)
     print(f"Updated priors for {len(state.priors)} commits")
@@ -893,6 +944,20 @@ Mark all files touching a given folder as 10x more likely to have introduced a c
 $ git bayesect prior_from_filenames --filenames-callback 'return 10 if any("suspicious" in f for f in filenames)'
 """
 
+PRIOR_FROM_TEXT_DESC = """\
+Set priors for several commits based on commit text (message + patch diff).
+
+See `git bayesect prior --help` for more details on prior.
+
+The `--text-callback` is Python code that is executed for each commit given the commit text.
+The text is the commit message followed by the patch produced by `git show`.
+If it returns a number, that weight is used as the prior.
+If it returns None, any previous prior is preserved.
+
+Mark commits mentioning timeout-related changes as 10x more likely:
+$ git bayesect priors_from_text --text-callback 'return 10 if "timeout" in text.lower() else 1'
+"""
+
 BETA_PRIORS_DESC = """\
 Set the beta priors for the likelihood of failure before and after the change.
 
@@ -1008,6 +1073,19 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
     subparser.set_defaults(command=cli_priors_from_filenames)
     subparser.add_argument(
         "--filenames-callback", help="Python code returning a float given filenames", required=True
+    )
+
+    # ===== priors_from_text =====
+    subparser = subparsers.add_parser(
+        "priors_from_text",
+        aliases=["priors-from-text"],
+        help=PRIOR_FROM_TEXT_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=PRIOR_FROM_TEXT_DESC,
+    )
+    subparser.set_defaults(command=cli_priors_from_text)
+    subparser.add_argument(
+        "--text-callback", help="Python code returning a float given commit text", required=True
     )
 
     # ===== beta_priors =====
