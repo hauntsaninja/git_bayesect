@@ -47,7 +47,7 @@ class Bisector:
             prior_weights = np.array(prior_weights, dtype=np.float64)
         assert isinstance(prior_weights, np.ndarray)
         if np.any(prior_weights < 0):
-            raise ValueError("prior_weights must be >= 0")
+            raise ValueError("prior_weights must be non-negative")
         self.prior_weights = prior_weights
 
         self.obs_yes = np.zeros_like(prior_weights, dtype=np.int64)
@@ -664,6 +664,8 @@ def cli_run(cmd: list[str]) -> None:
 
 
 def cli_prior(commit: str | bytes, weight: float) -> None:
+    if weight < 0:
+        raise BayesectError("Weight for prior must be non-negative") from None
     repo_path = Path.cwd()
     commit = parse_commit(repo_path, commit)
 
@@ -674,6 +676,8 @@ def cli_prior(commit: str | bytes, weight: float) -> None:
 
 
 def cli_priors_from_filenames(filenames_callback: str) -> None:
+    if "return" not in filenames_callback:
+        raise BayesectError("filenames callback must end with a return statement")
     repo_path = Path.cwd()
 
     state = State.from_git_state(repo_path)
@@ -693,6 +697,8 @@ def cli_priors_from_filenames(filenames_callback: str) -> None:
         prior = filenames_fn(files)
         if prior is not None:
             assert isinstance(prior, (int, float))
+            if prior < 0:
+                raise BayesectError("Weight for prior must be non-negative") from None
             state.priors[commit] = prior
     state.dump(repo_path)
     print(f"Updated priors for {len(state.priors)} commits")
@@ -827,60 +833,227 @@ def cli_log() -> None:
                 print(f"git bayesect skip --commit {smolsha(commit)}")
 
 
+START_DESC = """\
+Start a git bayesection.
+
+Example:
+$ git bayesect start --old "HEAD~100"
+"""
+
+FAIL_DESC = """\
+Record one failure observation.
+
+Example:
+$ git bayesect fail
+
+Recording a failure observation at a specific commit:
+$ git bayesect fail --commit $SHA
+"""
+
+PASS_DESC = """\
+Record one success observation.
+
+Example:
+$ git bayesect pass
+
+Recording a success observation at a specific commit:
+$ git bayesect pass --commit $SHA
+"""
+
+UNDO_DESC = """\
+Remove the last observation.
+
+Example:
+$ git bayesect fail  # oops, meant to run git bayesect pass
+$ git bayesect undo
+"""
+
+RESET_DESC = """Delete all git bayesection state."""
+
+PRIOR_DESC = """\
+Set the prior for a specific commit.
+
+The prior represents how likely it is a given commit introduced a change (prior to making any observations).
+The prior is an unnormalised weight that we default to 1.
+
+Marking $SHA as 10x more likely to have introduced a change (relative to other commits):
+$ git bayesect prior --commit $SHA --weight 10
+"""
+
+PRIOR_FROM_FILENAMES_DESC = """\
+Set priors for several commits based on filenames touched by the commit.
+
+See `git bayesect prior --help` for more details on prior.
+
+The `--filenames-callback` is Python code that is executed for each commit given the filenames the commit touches.
+If it returns a number, that weight is used as the prior.
+If it returns None, any previous prior is preserved.
+
+Mark all files touching a given folder as 10x more likely to have introduced a change:
+$ git bayesect prior_from_filenames --filenames-callback 'return 10 if any("suspicious" in f for f in filenames)'
+"""
+
+BETA_PRIORS_DESC = """\
+Set the beta priors for the likelihood of failure before and after the change.
+
+Default prior of failure at new commit is 90% (α_new = 0.9, β_new = 0.1)
+Default prior of failure at old commit is 5% (α_old = 0.05, β_old = 0.95)
+
+Any unspecified value is left unchanged.
+
+Turn git bayesect into deterministic git bisect:
+$ git bayesect beta_priors --alpha-new 1 --beta-new 0 --alpha-old 0 --beta-old 1
+"""
+
+CHECKOUT_DESC = """\
+Checkout the most informative commit at which to record an observation.
+
+That is, checkout the commit you should test next.
+"""
+
+STATUS_DESC = """Show a detailed status."""
+
+LOG_DESC = """Show commands to reconstruct the bayesection state."""
+
+RUN_DESC = """\
+Automatically run a bayesection based on running the given command.
+
+Example:
+$ git bayesect run python -m pytest
+"""
+
+
 def parse_options(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
 
     subparsers = parser.add_subparsers(required=True)
 
-    subparser = subparsers.add_parser("start")
+    # ===== start =====
+    subparser = subparsers.add_parser(
+        "start",
+        help=START_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=START_DESC,
+    )
     subparser.set_defaults(command=cli_start)
-    subparser.add_argument("--old", help="Old commit hash", required=True)
-    subparser.add_argument("--new", help="New commit hash", default=None)
+    subparser.add_argument("--old", help="Old revision (anything commit-ish)", required=True)
+    subparser.add_argument(
+        "--new",
+        default=None,
+        help="New revision (anything commit-ish). If not specified, defaults to HEAD",
+    )
 
-    subparser = subparsers.add_parser("fail", aliases=["failure"])
+    # ===== fail =====
+    subparser = subparsers.add_parser(
+        "fail",
+        aliases=["failure"],
+        help=FAIL_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=FAIL_DESC,
+    )
     subparser.set_defaults(command=cli_fail)
-    subparser.add_argument("--commit", default=None)
+    subparser.add_argument(
+        "--commit",
+        default=None,
+        help="Revision at which to record a failure observation (anything commit-ish). If not specified, defaults to HEAD",
+    )
 
-    subparser = subparsers.add_parser("pass", aliases=["success"])
+    # ===== pass =====
+    subparser = subparsers.add_parser(
+        "pass",
+        aliases=["success"],
+        help=PASS_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=PASS_DESC,
+    )
     subparser.set_defaults(command=cli_pass)
-    subparser.add_argument("--commit", default=None)
+    subparser.add_argument(
+        "--commit",
+        default=None,
+        help="Revision at which to record a success observation (anything commit-ish). If not specified, defaults to HEAD",
+    )
 
-    subparser = subparsers.add_parser("undo")
+    # ===== undo =====
+    subparser = subparsers.add_parser(
+        "undo",
+        help=UNDO_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=UNDO_DESC,
+    )
     subparser.set_defaults(command=cli_undo)
 
-    subparser = subparsers.add_parser("reset")
+    # ===== reset =====
+    subparser = subparsers.add_parser("reset", help=RESET_DESC, description=RESET_DESC)
     subparser.set_defaults(command=cli_reset)
 
-    subparser = subparsers.add_parser("prior")
+    # ===== prior =====
+    subparser = subparsers.add_parser(
+        "prior",
+        help=PRIOR_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=PRIOR_DESC,
+    )
+    subparser.set_defaults(command=cli_prior)
     subparser.add_argument("--commit", required=True)
     subparser.add_argument("--weight", type=float, required=True)
-    subparser.set_defaults(command=cli_prior)
 
-    subparser = subparsers.add_parser("priors_from_filenames", aliases=["priors-from-filenames"])
+    # ===== priors_from_filenames =====
+    subparser = subparsers.add_parser(
+        "priors_from_filenames",
+        aliases=["priors-from-filenames"],
+        help=PRIOR_FROM_FILENAMES_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=PRIOR_FROM_FILENAMES_DESC,
+    )
+    subparser.set_defaults(command=cli_priors_from_filenames)
     subparser.add_argument(
         "--filenames-callback", help="Python code returning a float given filenames", required=True
     )
-    subparser.set_defaults(command=cli_priors_from_filenames)
 
-    subparser = subparsers.add_parser("beta_priors", aliases=["beta-priors"])
+    # ===== beta_priors =====
+    subparser = subparsers.add_parser(
+        "beta_priors",
+        aliases=["beta-priors"],
+        help=BETA_PRIORS_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=BETA_PRIORS_DESC,
+    )
     subparser.add_argument("--alpha-new", type=float)
     subparser.add_argument("--beta-new", type=float)
     subparser.add_argument("--alpha-old", type=float)
     subparser.add_argument("--beta-old", type=float)
     subparser.set_defaults(command=cli_beta_priors)
 
-    subparser = subparsers.add_parser("checkout")
+    # ===== checkout =====
+    subparser = subparsers.add_parser(
+        "checkout",
+        help=CHECKOUT_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=CHECKOUT_DESC,
+    )
     subparser.set_defaults(command=cli_checkout)
 
-    subparser = subparsers.add_parser("status")
+    # ===== status =====
+    subparser = subparsers.add_parser("status", help=STATUS_DESC, description=STATUS_DESC)
     subparser.set_defaults(command=cli_status)
 
-    subparser = subparsers.add_parser("log")
+    # ===== log =====
+    subparser = subparsers.add_parser("log", help=LOG_DESC, description=LOG_DESC)
     subparser.set_defaults(command=cli_log)
 
-    subparser = subparsers.add_parser("run")
+    # ===== run =====
+    subparser = subparsers.add_parser(
+        "run",
+        help=RUN_DESC.splitlines()[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description=RUN_DESC,
+    )
     subparser.set_defaults(command=cli_run)
     subparser.add_argument("cmd", nargs=argparse.REMAINDER)
+
+    # ===== help =====
+    subparser = subparsers.add_parser("help", help="Show help")
+    subparser.set_defaults(command=lambda: parser.print_help())
 
     return parser.parse_args(argv)
 
