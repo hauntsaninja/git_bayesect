@@ -81,3 +81,25 @@ git bayesect checkout
 ## How it works
 
 TODO: talk about math
+
+## Demo
+
+This repository contains a little demo, in case you'd like to play around:
+```
+# Create a fake repository with a history to bayesect over
+python scripts/generate_fake_repo.py
+cd fake_repo
+
+# The fake repo contains a script called flaky.py
+# This is a simple script that fails some fraction of the time
+# At some point in the history of the repo, that fraction was changed
+python flaky.py
+git log --oneline
+
+# Start the bayesection
+OLD_COMMIT=$(git rev-list HEAD --reverse | head -n 2 | tail -n 1)
+git bayesect start --new main --old $OLD_COMMIT
+
+# Run a bayesection to find the commit that introduced the change
+git bayesect run python flaky.py
+```
