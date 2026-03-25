@@ -501,7 +501,9 @@ def print_beta_priors(state: State) -> None:
     print("=" * 80)
 
 
-def print_status(repo_path: Path, state: State, bisector: Bisector) -> None:
+def print_status(
+    repo_path: Path, state: State, bisector: Bisector, confidence: float = 0.95
+) -> None:
     new_index = state.commit_indices[state.new_sha]
     old_index = state.commit_indices[state.old_sha]
 
@@ -525,7 +527,7 @@ def print_status(repo_path: Path, state: State, bisector: Bisector) -> None:
     p90_left_commit = smolsha(indices_commits[new_index - p90_left])
     p90_right_commit = smolsha(indices_commits[new_index - p90_right])
 
-    if most_likely_prob >= 0.95:
+    if most_likely_prob >= confidence:
         most_likely_commit = smolsha(indices_commits[new_index - most_likely_index])
         msg = (
             f"Bisection converged to {most_likely_commit} ({most_likely_prob:.1%}) "
@@ -652,11 +654,13 @@ def cli_undo() -> None:
     select_and_checkout(repo_path, state, bisector)
 
 
-def cli_run(cmd: list[str]) -> None:
+def cli_run(cmd: list[str], confidence: float = 0.95) -> None:
     repo_path = Path.cwd()
 
     if not cmd:
         raise BayesectError("No command to run")
+    if not 0 <= confidence <= 1:
+        raise BayesectError("Confidence threshold must be between 0 and 1") from None
 
     state = State.from_git_state(repo_path)
     bisector = get_bisector(state)
@@ -676,8 +680,8 @@ def cli_run(cmd: list[str]) -> None:
             assert 0 <= relative_index <= new_index - old_index
             bisector.record(relative_index, result == Result.FAIL)
 
-            print_status(repo_path, state, bisector)
-            if bisector.distribution.max() >= 0.95:
+            print_status(repo_path, state, bisector, confidence=confidence)
+            if bisector.distribution.max() >= confidence:
                 break
     finally:
         state.dump(repo_path)
@@ -983,8 +987,10 @@ LOG_DESC = """Show commands to reconstruct the bayesection state."""
 RUN_DESC = """\
 Automatically run a bayesection based on running the given command.
 
+Stops once the most likely commit reaches a confidence threshold, defaulting to 95%.
+
 Example:
-$ git bayesect run python -m pytest
+$ git bayesect run --confidence 0.95 python -m pytest
 """
 
 
@@ -1127,6 +1133,12 @@ def parse_options(argv: list[str]) -> argparse.Namespace:
         description=RUN_DESC,
     )
     subparser.set_defaults(command=cli_run)
+    subparser.add_argument(
+        "--confidence",
+        type=float,
+        default=0.95,
+        help="Stops once the most likely commit reaches this probability (default: %(default)s)",
+    )
     subparser.add_argument("cmd", nargs=argparse.REMAINDER)
 
     # ===== help =====
