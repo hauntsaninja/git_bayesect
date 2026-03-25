@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Better validation for confidence in `git bayesect run`
+
 ## [v1.1]
 
 - Add `priors_from_text` command for setting priors based on commit message + diff text
