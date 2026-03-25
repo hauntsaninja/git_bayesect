@@ -31,11 +31,32 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dir", type=str, default=None)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--old-failure-rate", type=float, default=None)
+    parser.add_argument("--new-failure-rate", type=float, default=None)
     args = parser.parse_args()
 
     fake_repo_dir = Path("fake_repo") if args.dir is None else Path(args.dir)
     if args.seed is not None:
         random.seed(args.seed)
+
+    if (args.old_failure_rate is None) != (args.new_failure_rate is None):
+        parser.error("--old-failure-rate and --new-failure-rate must be provided together")
+
+    if args.old_failure_rate is not None:
+        if not 0 <= args.old_failure_rate <= 1:
+            parser.error("--old-failure-rate must be between 0 and 1")
+        if not 0 <= args.new_failure_rate <= 1:
+            parser.error("--new-failure-rate must be between 0 and 1")
+
+    if args.old_failure_rate is not None:
+        first_prob = args.old_failure_rate
+        second_prob = args.new_failure_rate
+    else:
+        first_prob = random.random()
+        second_prob = random.random()
+        while max(first_prob / second_prob, second_prob / first_prob) < 1.5:
+            first_prob = random.random()
+            second_prob = random.random()
 
     del args
 
@@ -49,15 +70,6 @@ def main() -> None:
 
     sp.run(["git", "commit", "--allow-empty", "-m", "init"], cwd=fake_repo_dir, check=True)
 
-    # first_prob = random.random() * 0.8
-    # second_prob = random.random() * (1 - first_prob - 0.1) + first_prob + 0.1
-
-    first_prob = random.random()
-    second_prob = random.random()
-    while max(first_prob / second_prob, second_prob / first_prob) < 1.5:
-        first_prob = random.random()
-        second_prob = random.random()
-
     write_file(fake_repo_dir / "flaky.py", get_flaky_script(first_prob))
     os.chmod(fake_repo_dir / "flaky.py", 0o755)
 
@@ -70,7 +82,7 @@ def main() -> None:
 
     old_commit = sp.check_output(["git", "rev-parse", "HEAD"], cwd=fake_repo_dir).decode().strip()
 
-    for _ in range(random.randrange(10)):
+    for _ in range(random.randrange(20)):
         sp.run(
             ["git", "commit", "--allow-empty", "-m", "empty commit"], cwd=fake_repo_dir, check=True
         )
@@ -80,7 +92,7 @@ def main() -> None:
 
     sp.run(["git", "add", "flaky.py"], cwd=fake_repo_dir, check=True)
     sp.run(
-        ["git", "commit", "-m", f"flaky.py fails with p={second_prob:.4f}"],
+        ["git", "commit", "-m", f"[culprit] flaky.py fails with p={second_prob:.4f}"],
         cwd=fake_repo_dir,
         check=True,
     )
@@ -89,7 +101,7 @@ def main() -> None:
         sp.check_output(["git", "rev-parse", "HEAD"], cwd=fake_repo_dir).decode().strip()
     )
 
-    for _ in range(random.randrange(10)):
+    for _ in range(random.randrange(20)):
         sp.run(
             ["git", "commit", "--allow-empty", "-m", "empty commit"], cwd=fake_repo_dir, check=True
         )
