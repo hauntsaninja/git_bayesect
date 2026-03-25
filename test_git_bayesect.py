@@ -110,7 +110,8 @@ def test_bisector_bisect() -> None:
     gen = random.Random(seed)
 
     N = 32
-    B = gen.randrange(N)
+    # [0, N - 2] to ensure that there is a commit before the change point
+    B = gen.randint(0, N - 2)
 
     p_obs_new = gen.random() * 0.5 + 0.5
     p_obs_old = gen.random() * 0.2
@@ -133,8 +134,9 @@ def test_bisector_bisect() -> None:
         print("=" * 80)
         print(f"iteration: {iteration}")
 
-        print(dist := bisect.distribution)
+        dist = bisect.distribution
 
+        print(dist)
         print(f"answer prob:        {dist[B]:.4f}")
         print(f"likeliest prob:     {dist[np.argmax(dist)]:.4f}")
         print(f"index vs answer:    {np.argmax(dist)} vs {B}")
@@ -159,13 +161,11 @@ def test_bisector_bisect() -> None:
         p_obs = p_obs_new if index <= B else p_obs_old
         obs = randgens[index].random() < p_obs
         print(f"tested index: {index}, observation: {obs}, p_obs: {p_obs:0.4f}")
-        if obs and p_obs < 0.5:
-            print("!!! observation was unlikely")
+        if (obs and p_obs < 0.5) or (not obs and p_obs > 0.5):
+            print("(observation was less likely)")
         bisect.record(index, obs)
     else:
-        print("=" * 80)
-        print("failed to converge")
-        print("=" * 80)
+        raise RuntimeError("failed to converge")
 
     print("=" * 80)
     print(f"N: {N}")
