@@ -7,7 +7,7 @@ from git_bayesect import Bisector
 
 def test_bisector_posteriors() -> None:
     b = Bisector([1] * 5)
-    # b.record(1, observation=True, p_obs_new=1, p_obs_old=0)
+    # b.record(2, observation=True, p_obs_new=1, p_obs_old=0)
     for _ in range(100):
         b.record(0, True)
         b.record(4, False)
@@ -15,7 +15,7 @@ def test_bisector_posteriors() -> None:
     assert np.allclose(b.distribution, [0, 0, 0.5, 0.5, 0], atol=0.01)
 
     b = Bisector([1] * 5)
-    # b.record(1, observation=True, p_obs_new=1, p_obs_old=0.1)
+    # b.record(2, observation=True, p_obs_new=1, p_obs_old=0.1)
     for _ in range(100):
         b.record(0, True)
     for _ in range(10):
@@ -27,7 +27,7 @@ def test_bisector_posteriors() -> None:
     assert np.allclose(b.distribution, [0.0455, 0.0455, 0.4545, 0.4545, 0], atol=0.01)
 
     b = Bisector([1] * 5)
-    # b.record(1, observation=True, p_obs_new=0.8, p_obs_old=0.2)
+    # b.record(2, observation=True, p_obs_new=0.8, p_obs_old=0.2)
     for _ in range(80):
         b.record(0, True)
     for _ in range(20):
@@ -41,7 +41,7 @@ def test_bisector_posteriors() -> None:
     assert np.allclose(b.distribution, [0.1, 0.1, 0.4, 0.4, 0], atol=0.01)
 
     b = Bisector([1] * 5)
-    # b.record(1, observation=False, p_obs_new=1, p_obs_old=0)
+    # b.record(2, observation=False, p_obs_new=1, p_obs_old=0)
     for _ in range(100):
         b.record(0, True)
     for _ in range(100):
@@ -51,7 +51,7 @@ def test_bisector_posteriors() -> None:
     assert np.allclose(b.distribution, [0.5, 0.5, 0, 0, 0], atol=0.01)
 
     b = Bisector([1] * 5)
-    # b.record(1, observation=False, p_obs_new=1, p_obs_old=0.1)
+    # b.record(2, observation=False, p_obs_new=1, p_obs_old=0.1)
     for _ in range(100):
         b.record(0, True)
     for _ in range(10):
@@ -63,7 +63,7 @@ def test_bisector_posteriors() -> None:
     assert np.allclose(b.distribution, [0.5, 0.5, 0, 0, 0], atol=0.01)
 
     b = Bisector([1] * 5)
-    # b.record(1, observation=False, p_obs_new=0.8, p_obs_old=0.2)
+    # b.record(2, observation=False, p_obs_new=0.8, p_obs_old=0.2)
     for _ in range(80):
         b.record(0, True)
     for _ in range(20):
