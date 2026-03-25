@@ -659,7 +659,7 @@ def cli_run(cmd: list[str], confidence: float = 0.95) -> None:
 
     if not cmd:
         raise BayesectError("No command to run")
-    if not 0 <= confidence <= 1:
+    if not 0 < confidence < 1:
         raise BayesectError("Confidence threshold must be between 0 and 1") from None
 
     state = State.from_git_state(repo_path)
