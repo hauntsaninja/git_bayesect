@@ -13,6 +13,19 @@ has changed at some point in some direction
 ```
 pip install git_bayesect
 ```
+Or:
+```
+uv tool install git_bayesect
+```
+
+## How it works
+
+`git_bayesect` uses Bayesian inference to identify the commit introducing a change, with
+commit selection performed via greedy minimisation of expected entropy, and using a Beta-Bernoulli
+conjugacy trick while calculating posterior probabilities to make handling unknown failure rates
+tractable.
+
+See https://hauntsaninja.github.io/git_bayesect.html for a write up.
 
 ## Usage
 
@@ -60,6 +73,7 @@ git bayesect priors_from_text --text-callback "return 10 if 'timeout' in text.lo
 
 Set the beta priors:
 ```
+# We expect "fail" observations 90% of the time at new commit, 5% of the time at old commit
 git bayesect beta_priors --alpha-new 0.9 --beta-new 0.1 --alpha-old 0.05 --beta-old 0.95
 ```
 
@@ -82,10 +96,6 @@ Checkout the best commmit to test:
 ```
 git bayesect checkout
 ```
-
-## How it works
-
-TODO: talk about math
 
 ## Demo
 
