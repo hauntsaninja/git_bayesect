@@ -38,10 +38,11 @@ class Bisector:
     def __init__(
         self,
         prior_weights: list[float] | list[int] | ndarray,
-        alpha_new: float = 0.9,
-        beta_new: float = 0.1,
-        alpha_old: float = 0.05,
-        beta_old: float = 0.95,
+        # WARNING: Moving the Beta priors away from the Jeffreys prior can cause overconfidence issues
+        alpha_new: float = 0.5,
+        beta_new: float = 0.5,
+        alpha_old: float = 0.5,
+        beta_old: float = 0.5,
     ) -> None:
         if isinstance(prior_weights, list):
             prior_weights = np.array(prior_weights, dtype=np.float64)
@@ -588,7 +589,7 @@ def cli_start(old: str, new: str | None) -> None:
     state = State(
         old_sha=old_sha,
         new_sha=new_sha,
-        beta_priors=BetaPriors(alpha_new=0.9, beta_new=0.1, alpha_old=0.05, beta_old=0.95),
+        beta_priors=BetaPriors(alpha_new=0.5, beta_new=0.5, alpha_old=0.5, beta_old=0.5),
         priors={},
         results=[],
         commit_indices=commit_indices,
@@ -965,8 +966,10 @@ $ git bayesect priors_from_text --text-callback 'return 10 if "timeout" in text.
 BETA_PRIORS_DESC = """\
 Set the beta priors for the likelihood of failure before and after the change.
 
-Default prior of failure at new commit is 90% (α_new = 0.9, β_new = 0.1)
-Default prior of failure at old commit is 5% (α_old = 0.05, β_old = 0.95)
+Default Beta prior is α_new = 0.5, β_new = 0.5
+Default Beta prior is α_old = 0.5, β_old = 0.5
+
+WARNING: Moving the Beta priors away from the Jeffreys prior can cause overconfidence issues.
 
 Any unspecified value is left unchanged.
 
