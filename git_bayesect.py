@@ -61,10 +61,10 @@ class Bisector:
         self.alpha_old = alpha_old
         self.beta_old = beta_old
 
-        self.post_weights: ndarray | None = None
+        self._post_weights: ndarray | None = None
 
     def _maybe_update_posteriors(self) -> None:
-        if self.post_weights is None:
+        if self._post_weights is None:
             self._update_posteriors()
 
     def _update_posteriors(self) -> None:
@@ -101,13 +101,13 @@ class Bisector:
         log_prior = np.where(self.prior_weights > 0, np.log(self.prior_weights), -np.inf)
         # log_post[b] is now numerator of Bayes' theorem, so just normalise by sum(exp(log_post))
         log_post = log_prior + log_likelihood_left + log_likelihood_right
-        self.post_weights = np.exp(log_post - logsumexp(log_post))
+        self._post_weights = np.exp(log_post - logsumexp(log_post))
         # fmt: on
 
     def record(self, index: int, observation: bool | None) -> None:
         """Record an observation at index."""
         assert 0 <= index < len(self.prior_weights)
-        self.post_weights = None
+        self._post_weights = None
         if observation is None:
             # Similar to git bisect skip, let's just zero out the prior
             # Note we might want to lower the prior instead
@@ -121,7 +121,7 @@ class Bisector:
     def select(self) -> int:
         """Return the index which will most reduce entropy."""
         self._maybe_update_posteriors()
-        assert self.post_weights is not None
+        assert self._post_weights is not None
 
         # fmt: off
         total_left  = self.obs_total
@@ -138,12 +138,12 @@ class Bisector:
         # p_obs_yes[b]
         # = P(obs_yes | select=b)
         # = \sum_{i=0}^{b-1} p_obs_old[i] * post[i] + \sum_{i=b}^{n-1} p_obs_new[i] * post[i]
-        w_new_yes = self.post_weights * p_obs_new
-        w_old_yes = self.post_weights * p_obs_old
+        w_new_yes = self._post_weights * p_obs_new
+        w_old_yes = self._post_weights * p_obs_old
         p_obs_yes = (np.cumsum(w_old_yes) - w_old_yes) + np.cumsum(w_new_yes[::-1])[::-1]
 
-        w_new_no  = self.post_weights * (1.0 - p_obs_new)
-        w_old_no  = self.post_weights * (1.0 - p_obs_old)
+        w_new_no  = self._post_weights * (1.0 - p_obs_new)
+        w_old_no  = self._post_weights * (1.0 - p_obs_old)
         p_obs_no  = (np.cumsum(w_old_no)  - w_old_no)  + np.cumsum(w_new_no[::-1])[::-1]
 
         assert np.allclose(p_obs_yes + p_obs_no, 1)
@@ -170,15 +170,15 @@ class Bisector:
     def distribution(self) -> ndarray:
         """Current posterior P(index=B | data)"""
         self._maybe_update_posteriors()
-        assert self.post_weights is not None
-        return self.post_weights
+        assert self._post_weights is not None
+        return self._post_weights
 
     @property
     def entropy(self) -> float:
         """Posterior entropy in bits"""
         self._maybe_update_posteriors()
-        assert self.post_weights is not None
-        probs = self.post_weights[self.post_weights > 0]
+        assert self._post_weights is not None
+        probs = self._post_weights[self._post_weights > 0]
         return -float(np.sum(probs * np.log2(probs)))
 
     @property
@@ -218,9 +218,9 @@ class Bisector:
     def central_range(self, mass: float) -> tuple[int, int]:
         """Return the range of indices that contain the central mass of the posterior, inclusive."""
         self._maybe_update_posteriors()
-        assert self.post_weights is not None
+        assert self._post_weights is not None
         assert 0 <= mass <= 1
-        cumsum = np.cumsum(self.post_weights)
+        cumsum = np.cumsum(self._post_weights)
 
         tail = (1 - mass) / 2
         left = np.searchsorted(cumsum, tail, side="left")
