@@ -79,7 +79,7 @@ def test_bisector_posteriors() -> None:
 
 def test_bisector_central_range() -> None:
     b = Bisector([1] * 3)
-    b.post_weights = np.array([0.1, 0.8, 0.1])
+    b._post_weights = np.array([0.1, 0.8, 0.1])
     assert b.central_range(0) == (1, 1)
     assert b.central_range(0.5) == (1, 1)
     assert b.central_range(0.799) == (1, 1)
@@ -87,14 +87,14 @@ def test_bisector_central_range() -> None:
     assert b.central_range(1.0) == (0, 2)
 
     b = Bisector([1] * 5)
-    b.post_weights = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
+    b._post_weights = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
     assert b.central_range(0) == (2, 2)
     assert b.central_range(0.3) == (1, 3)
     assert b.central_range(0.7) == (0, 4)
     assert b.central_range(1.0) == (0, 4)
 
     b = Bisector([1] * 5)
-    b.post_weights = np.array([0.4, 0.4, 0.1, 0.1, 0.2])
+    b._post_weights = np.array([0.4, 0.4, 0.1, 0.1, 0.2])
     assert b.central_range(0) == (1, 1)
     assert b.central_range(0.2) == (0, 1)
     assert b.central_range(0.599) == (0, 1)
