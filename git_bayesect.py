@@ -586,10 +586,18 @@ def cli_start(old: str, new: str | None) -> None:
     old_sha = parse_commit(repo_path, old)
     commit_indices = get_commit_indices(repo_path, new_sha)
 
+    b = Bisector([])
+    default_beta_priors = BetaPriors(
+        alpha_new=b.alpha_new,
+        beta_new=b.beta_new,
+        alpha_old=b.alpha_old,
+        beta_old=b.beta_old,
+    )
+
     state = State(
         old_sha=old_sha,
         new_sha=new_sha,
-        beta_priors=BetaPriors(alpha_new=0.5, beta_new=0.5, alpha_old=0.5, beta_old=0.5),
+        beta_priors=default_beta_priors,
         priors={},
         results=[],
         commit_indices=commit_indices,
