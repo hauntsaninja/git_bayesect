@@ -519,8 +519,9 @@ def print_status(
     p_obs_new = np.dot(dist_p_obs_new, dist)
     p_obs_old = np.dot(dist_p_obs_old, dist)
 
-    # TODO: maybe tie break argmax with most central?
-    most_likely_index = int(np.argmax(dist))
+    # tie break towards the middle
+    max_indices = np.flatnonzero(np.isclose(dist, np.max(dist), rtol=1e-12, atol=1e-15))
+    most_likely_index = int(max_indices[np.argmin(np.abs(max_indices - len(dist) // 2))])
     most_likely_prob = dist[most_likely_index]
     most_likely_p_obs_new = dist_p_obs_new[most_likely_index]
     most_likely_p_obs_old = dist_p_obs_old[most_likely_index]
