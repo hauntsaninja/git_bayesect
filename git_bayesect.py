@@ -180,7 +180,7 @@ class Bisector:
         self._maybe_update_posteriors()
         assert self._post_weights is not None
         probs = self._post_weights[self._post_weights > 0]
-        return -float(np.sum(probs * np.log2(probs)))
+        return -float(np.dot(probs, np.log2(probs)))
 
     @property
     def empirical_p_obs(self) -> tuple[ndarray, ndarray]:
@@ -511,8 +511,8 @@ def print_status(
     dist = bisector.distribution
     dist_p_obs_new, dist_p_obs_old = bisector.empirical_p_obs
 
-    p_obs_new = (dist_p_obs_new * dist).sum()
-    p_obs_old = (dist_p_obs_old * dist).sum()
+    p_obs_new = np.dot(dist_p_obs_new, dist)
+    p_obs_old = np.dot(dist_p_obs_old, dist)
 
     # TODO: maybe tie break argmax with most central?
     most_likely_index = int(np.argmax(dist))
