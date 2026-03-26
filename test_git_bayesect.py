@@ -103,6 +103,12 @@ def test_bisector_central_range() -> None:
     assert b.central_range(1.0) == (0, 4)
 
 
+def test_bisector_select_tie_breaks_to_middle_commit() -> None:
+    # Given we currently have symmetric beta priors, we should tie break towards middle
+    assert Bisector([1] * 5).select() == 2
+    assert Bisector([1] * 6).select() == 3
+
+
 def test_bisector_bisect() -> None:
     gen = random.Random()
     seed = gen.randbytes(16)

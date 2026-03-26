@@ -165,7 +165,12 @@ class Bisector:
         # fmt: on
 
         expected_H = H_yes * p_obs_yes + H_no * p_obs_no
-        return int(np.argmin(expected_H))
+
+        # tie break the argmin by choosing the middle
+        candidate_indices = np.flatnonzero(
+            np.isclose(expected_H, np.min(expected_H), rtol=1e-12, atol=1e-15)
+        )
+        return int(candidate_indices[np.argmin(np.abs(candidate_indices - len(expected_H) // 2))])
 
     @property
     def distribution(self) -> ndarray:
