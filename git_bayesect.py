@@ -538,7 +538,7 @@ def print_status(
         msg = (
             f"Bisection converged to {most_likely_commit} ({most_likely_prob:.1%}) "
             f"after {bisector.num_total_observations} observations\n"
-            f"Subsequent failure rate is {most_likely_p_obs_new:.1%}, "
+            f"Observed subsequent failure rate is {most_likely_p_obs_new:.1%}, "
             f"prior failure rate is {most_likely_p_obs_old:.1%}"
         )
         msg = msg.rstrip()
@@ -562,7 +562,7 @@ def print_status(
         msg += f"New failure rate estimate: {p_obs_new:.1%}, old failure rate estimate: {p_obs_old:.1%}\n\n"
         if most_likely_prob >= max(0.1, 2 / (new_index - old_index + 1)):
             msg += f"Most likely commit: {most_likely_commit} ({most_likely_prob:.1%})\n"
-            msg += f"Subsequent failure rate is {most_likely_p_obs_new:.1%}, "
+            msg += f"Observed subsequent failure rate is {most_likely_p_obs_new:.1%}, "
             msg += f"prior failure rate is {most_likely_p_obs_old:.1%}\n"
 
         msg = msg.rstrip()
