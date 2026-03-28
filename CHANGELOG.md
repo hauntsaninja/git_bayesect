@@ -1,8 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [v1.2]
 
+- Switch to uninformative beta priors to avoid calibration issues
 - Better validation for confidence in `git bayesect run`
+- Introduce better tie breaking logic for commit selection and maximum a posteriori determination
+- Improve error messages, performance and testing
 
 ## [v1.1]
 
