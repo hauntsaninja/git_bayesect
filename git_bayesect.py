@@ -400,6 +400,12 @@ def get_current_commit(repo_path: Path) -> bytes:
     return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repo_path).strip()
 
 
+def get_merge_base(repo_path: Path, c1: bytes, c2: bytes) -> bytes:
+    return subprocess.check_output(
+        ["git", "merge-base", c1.decode(), c2.decode()], cwd=repo_path
+    ).strip()
+
+
 def get_commit_files_mapping(repo_path: Path, commits: list[bytes]) -> dict[bytes, list[str]]:
     output = subprocess.check_output(
         [
@@ -591,6 +597,12 @@ def cli_start(old: str, new: str | None) -> None:
     new_sha = parse_commit(repo_path, new)
     old_sha = parse_commit(repo_path, old)
     commit_indices = get_commit_indices(repo_path, new_sha)
+    if old_sha not in commit_indices:
+        print(f"Old commit {smolsha(old_sha)} is not an ancestor of new commit {smolsha(new_sha)}")
+        merge_sha = get_merge_base(repo_path, old_sha, new_sha)
+        print(f"Using merge base {smolsha(merge_sha)} as old commit instead...")
+        old_sha = merge_sha
+    assert old_sha in commit_indices
 
     b = Bisector([])
     default_beta_priors = BetaPriors(
