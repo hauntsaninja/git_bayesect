@@ -127,9 +127,8 @@ Observed subsequent failure rate is 42.0%, prior failure rate is 3.0%
 ```bash
 cd <your-git-repo>
 
-# Start bisection from 2 commits back and run automatically
-OLD_COMMIT=$(git rev-list HEAD --reverse | head -n 2 | tail -n 1)
-uvx git_bayesect start --old $OLD_COMMIT
+# Bisect over the last 50 commits
+uvx git_bayesect start --old HEAD~50
 uvx git_bayesect run python flaky_test.py
 ```
 
