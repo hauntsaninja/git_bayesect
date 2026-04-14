@@ -86,7 +86,7 @@ Run the bisection automatically using a command to make observations:
 git bayesect run $CMD
 ```
 
-Checkout the best commmit to test:
+Checkout the best commit to test:
 ```
 git bayesect checkout
 ```
