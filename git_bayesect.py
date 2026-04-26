@@ -371,14 +371,16 @@ def git_dir(path: Path) -> Path:
 
 def parse_commit(repo_path: Path, commit: str | bytes | None) -> bytes:
     if isinstance(commit, bytes):
-        assert len(commit) == 40
+        if len(commit) != 40:
+            raise ValueError(f"Invalid commit SHA: expected 40 bytes, got {len(commit)}")
         return commit
 
     if commit is None:
         commit = "HEAD"
 
     commit = subprocess.check_output(["git", "rev-parse", commit], cwd=repo_path).strip()
-    assert len(commit) == 40
+    if len(commit) != 40:
+        raise ValueError(f"Invalid commit SHA: expected 40 bytes, got {len(commit)}")
     return commit
 
 
@@ -734,7 +736,31 @@ def cli_priors_from_filenames(filenames_callback: str) -> None:
     state = State.from_git_state(repo_path)
     files_mapping = get_commit_files_mapping(repo_path, commits=list(state.commit_indices.keys()))
 
-    cb_globals: dict[str, Any] = {}
+    cb_globals: dict[str, Any] = {
+        "__builtins__": {
+            "len": len,
+            "any": any,
+            "all": all,
+            "str": str,
+            "int": int,
+            "float": float,
+            "bool": bool,
+            "list": list,
+            "tuple": tuple,
+            "set": set,
+            "dict": dict,
+            "range": range,
+            "enumerate": enumerate,
+            "zip": zip,
+            "sum": sum,
+            "min": min,
+            "max": max,
+            "abs": abs,
+            "round": round,
+            "isinstance": isinstance,
+            "print": print,
+        }
+    }
     cb_locals: dict[str, Any] = {}
 
     import textwrap
@@ -766,7 +792,32 @@ def cli_priors_from_text(text_callback: str) -> None:
     state = State.from_git_state(repo_path)
     text_mapping = get_commit_text_mapping(repo_path, commits=list(state.commit_indices.keys()))
 
-    cb_globals: dict[str, Any] = {}
+    cb_globals: dict[str, Any] = {
+        "__builtins__": {
+            "len": len,
+            "any": any,
+            "all": all,
+            "str": str,
+            "int": int,
+            "float": float,
+            "bool": bool,
+            "list": list,
+            "tuple": tuple,
+            "set": set,
+            "dict": dict,
+            "range": range,
+            "enumerate": enumerate,
+            "zip": zip,
+            "sum": sum,
+            "min": min,
+            "max": max,
+            "abs": abs,
+            "round": round,
+            "isinstance": isinstance,
+            "print": print,
+            "bytes": bytes,
+        }
+    }
     cb_locals: dict[str, Any] = {}
 
     import textwrap
