@@ -1024,7 +1024,7 @@ $ git bayesect run --confidence 0.95 python -m pytest
 
 
 def parse_options(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog="git-bayesect")
 
     subparsers = parser.add_subparsers(required=True)
 
