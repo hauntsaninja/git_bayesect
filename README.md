@@ -54,6 +54,50 @@ Reset:
 git bayesect reset
 ```
 
+## Safe stopping
+
+By default the bisection stops once the most likely commit reaches the confidence threshold (95%,
+or `git bayesect run --confidence`). That confidence is a Bayesian average over the priors: for
+particular failure rates, or when the test doesn't behave the way the model assumes, the reported
+commit can be wrong more often than the confidence says.
+
+Start with `--safe` to only stop once every other commit has been ruled out. The reported
+commit is then wrong with probability at most 1 - confidence, whatever the failure rates and
+however many commits there are, as long as the failure rate changes at a single commit. The
+rates may even change during the bisection, for example when CI gets busier, provided commits on
+the same side of the culprit keep sharing a failure rate. Safe mode picks the commit to test at
+random, so test the commits it checks out. It typically takes 18–35% more test runs.
+```
+git bayesect start --old $COMMIT --safe
+```
+
+The confidence level defaults to 95%. A safe bisection saves the level given to
+`git bayesect run --confidence`, so every command reports at the same level.
+
+Allow stopping with a range of up to N adjacent commits, which contains the culprit with the same
+bound. A range can also help when the failure rate ramps up over a few commits, although the bound
+does not cover that case:
+```
+git bayesect start --old $COMMIT --max-range 4
+```
+
+Stop without reporting a commit if the results don't fit a single change in failure rate, for
+instance failures that come in bursts because reruns on the same commit aren't independent:
+```
+git bayesect start --old $COMMIT --check-assumptions
+```
+
+`--max-range` and `--check-assumptions` imply `--safe`. The bound doesn't cover reruns that
+depend on each other, or failure rates that differ between commits on the same side of the
+culprit. The assumption check catches some of these cases, but not reliably.
+
+Priors can be changed at any time: they affect later choices, not the evidence already collected.
+Restarting reuses the pending choice of commit. A result recorded for a commit other than the one
+checked out still informs later choices, but cancels the pending draw, which can lower the current
+evidence. `undo` keeps the bound; with `--check-assumptions`, only undo results to correct mistakes.
+After `undo`, the same commit is checked out again. A test that is stopped during `git bayesect run`
+counts as a missing result, and `git bayesect log` prints a snapshot that can't be edited.
+
 ## More usage
 
 Set the prior for a given commit:
@@ -85,6 +129,8 @@ Run the bisection automatically using a command to make observations:
 ```
 git bayesect run $CMD
 ```
+While it runs, only use `git bayesect status` and `git bayesect log`: other commands change the
+bisection or the checkout under the running test.
 
 Checkout the best commit to test:
 ```
